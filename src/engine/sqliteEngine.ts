@@ -27,7 +27,11 @@ export class LiveSqliteEngine {
     private readonly dbPath: string;
     private readonly documents = new Map<string, DocumentRecord<any>>(); // key: `${collection}:${id}`
     private readonly cdcSubject = new Subject<CDCEvent<any>>();
-    private isClosed = false;
+    private _isClosed = false;
+
+    get isClosed(): boolean {
+        return this._isClosed;
+    }
 
     constructor(config: EngineConfig, storage: StorageAdapter) {
         this.config = config;
@@ -50,11 +54,12 @@ export class LiveSqliteEngine {
     /**
      * Inserts a new document. Throws if a document with the same collection and id already exists.
      */
-    async insertDoc<T extends Record<string, unknown> = Record<string, unknown>>(
+    async insertDoc<T extends object = Record<string, any>>(
         collection: string,
         id: string,
         data: T,
-        blobs?: BlobMap
+        blobs?: BlobMap,
+        mutationId?: string
     ): Promise<DocumentRecord<T>> {
         this.assertNotClosed();
         const key = this.makeKey(collection, id);
@@ -82,6 +87,7 @@ export class LiveSqliteEngine {
             rev: doc.rev,
             delta: doc.data,
             timestamp: now,
+            mutationId,
         });
 
         return doc;
@@ -90,11 +96,12 @@ export class LiveSqliteEngine {
     /**
      * Replaces an existing document or creates it if missing.
      */
-    async updateDoc<T extends Record<string, unknown> = Record<string, unknown>>(
+    async updateDoc<T extends object = Record<string, any>>(
         collection: string,
         id: string,
         data: T,
-        blobs?: BlobMap
+        blobs?: BlobMap,
+        mutationId?: string
     ): Promise<DocumentRecord<T>> {
         this.assertNotClosed();
         const key = this.makeKey(collection, id);
@@ -121,6 +128,7 @@ export class LiveSqliteEngine {
             rev: doc.rev,
             delta: doc.data,
             timestamp: now,
+            mutationId,
         });
 
         return doc;
@@ -129,11 +137,12 @@ export class LiveSqliteEngine {
     /**
      * Applies an RFC 7396 JSON merge patch atomically to an existing document.
      */
-    async patchDoc<T extends Record<string, unknown> = Record<string, unknown>>(
+    async patchDoc<T extends object = Record<string, any>>(
         collection: string,
         id: string,
         patch: Partial<T> | Record<string, unknown>,
-        blobs?: BlobMap
+        blobs?: BlobMap,
+        mutationId?: string
     ): Promise<DocumentRecord<T>> {
         this.assertNotClosed();
         const key = this.makeKey(collection, id);
@@ -165,6 +174,7 @@ export class LiveSqliteEngine {
             rev: doc.rev,
             delta: patch as Partial<T>,
             timestamp: now,
+            mutationId,
         });
 
         return doc;
@@ -173,7 +183,7 @@ export class LiveSqliteEngine {
     /**
      * Deletes a document by id.
      */
-    async deleteDoc(collection: string, id: string): Promise<boolean> {
+    async deleteDoc(collection: string, id: string, mutationId?: string): Promise<boolean> {
         this.assertNotClosed();
         const key = this.makeKey(collection, id);
         const existing = this.documents.get(key);
@@ -191,6 +201,7 @@ export class LiveSqliteEngine {
             rev: existing.rev + 1,
             delta: {},
             timestamp: Date.now(),
+            mutationId,
         });
 
         return true;
@@ -199,7 +210,7 @@ export class LiveSqliteEngine {
     /**
      * Gets a document snapshot by id.
      */
-    async getDoc<T extends Record<string, unknown> = Record<string, unknown>>(
+    async getDoc<T extends object = Record<string, any>>(
         collection: string,
         id: string
     ): Promise<DocumentRecord<T> | null> {
@@ -212,7 +223,7 @@ export class LiveSqliteEngine {
     /**
      * Queries all documents in a collection, optionally filtered by predicate.
      */
-    async queryDocs<T extends Record<string, unknown> = Record<string, unknown>>(
+    async queryDocs<T extends object = Record<string, any>>(
         collection: string,
         predicate?: (doc: DocumentRecord<T>) => boolean
     ): Promise<Array<DocumentRecord<T>>> {
@@ -234,11 +245,17 @@ export class LiveSqliteEngine {
     getEngineAccess<T = unknown>(collection: string): LiveEngineAccess<T> {
         const cdc$ = this.cdcSubject.pipe(
             filter((event) => event.collection === collection),
-            map((event) => ({
-                type: event.type,
-                id: event.id,
-                delta: event.delta as Partial<T>,
-            }))
+            map((event) => {
+                const res: { type: 'insert' | 'update' | 'delete'; id: string; delta: Partial<T>; mutationId?: string } = {
+                    type: event.type,
+                    id: event.id,
+                    delta: event.delta as Partial<T>,
+                };
+                if (event.mutationId !== undefined) {
+                    res.mutationId = event.mutationId;
+                }
+                return res;
+            })
         );
 
         return {
@@ -272,13 +289,13 @@ export class LiveSqliteEngine {
         }
 
         if (type === 'insert') {
-            await this.insertDoc(collection, id, raw.data || {}, raw.blobs);
+            await this.insertDoc(collection, id, raw.data || {}, raw.blobs, raw.mutationId);
         } else if (type === 'update') {
-            await this.updateDoc(collection, id, raw.data || {}, raw.blobs);
+            await this.updateDoc(collection, id, raw.data || {}, raw.blobs, raw.mutationId);
         } else if (type === 'patch') {
-            await this.patchDoc(collection, id, raw.data || {}, raw.blobs);
+            await this.patchDoc(collection, id, raw.data || {}, raw.blobs, raw.mutationId);
         } else if (type === 'delete') {
-            await this.deleteDoc(collection, id);
+            await this.deleteDoc(collection, id, raw.mutationId);
         } else {
             throw new Error(`Unsupported raw commit event type: '${type}'.`);
         }
@@ -468,10 +485,10 @@ export class LiveSqliteEngine {
      * Closes the engine, completes CDC streams, and cleans up resources.
      */
     async close(): Promise<void> {
-        if (this.isClosed) {
+        if (this._isClosed) {
             return;
         }
-        this.isClosed = true;
+        this._isClosed = true;
         await this.persistToStorage();
         this.cdcSubject.complete();
         if (this.storage.close) {
@@ -480,7 +497,7 @@ export class LiveSqliteEngine {
     }
 
     private assertNotClosed(): void {
-        if (this.isClosed) {
+        if (this._isClosed) {
             throw new Error('LiveSqliteEngine is closed and cannot perform operations.');
         }
     }

@@ -17,7 +17,7 @@ export interface StorageAdapter {
 
 export type BlobMap = Record<string, Uint8Array | Float32Array>;
 
-export interface DocumentRecord<T extends Record<string, unknown> = Record<string, unknown>> {
+export interface DocumentRecord<T extends object = Record<string, any>> {
     readonly collection: string;
     readonly id: string;
     readonly rev: number;
@@ -35,6 +35,7 @@ export interface CDCEvent<T = unknown> {
     readonly rev: number;
     readonly delta: Partial<T>;
     readonly timestamp: number;
+    readonly mutationId?: string;
 }
 
 export interface RawCommitEvent<T = unknown> {
@@ -44,6 +45,7 @@ export interface RawCommitEvent<T = unknown> {
     readonly data?: Partial<T>;
     readonly blobs?: BlobMap;
     readonly rev?: number;
+    readonly mutationId?: string;
 }
 
 export interface EngineConfig {
@@ -56,5 +58,5 @@ export interface LiveEngineAccess<T = unknown> {
     readonly tableName: string;
     commitRaw(event: unknown): Promise<void>;
     queryRaw<R = unknown>(sql: string, params?: unknown[]): Promise<R[]>;
-    readonly cdc$: Observable<{ type: 'insert' | 'update' | 'delete'; id: string; delta: Partial<T> }>;
+    readonly cdc$: Observable<{ type: 'insert' | 'update' | 'delete'; id: string; delta: Partial<T>; rev?: number; mutationId?: string }>;
 }
