@@ -17,6 +17,7 @@ import {
 } from './engine/index';
 
 export * from './engine/index';
+export * from './lens/index';
 
 /**
  * Common disposable contract for documents and collections.
