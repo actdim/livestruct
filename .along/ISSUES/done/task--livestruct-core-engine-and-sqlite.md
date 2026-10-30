@@ -3,7 +3,8 @@ protocol: along
 protocol_version: "4.5.4"
 slug: livestruct-core-engine-and-sqlite
 type: task
-status: open
+status: done
+completed: 2026-10-30
 priority: high
 created: 2026-10-30
 updated: 2026-10-30
@@ -25,6 +26,6 @@ Implement the low-level LiveStore SQLite WASM driver and OPFS persistence integr
 - REQ-3: The engine MUST expose raw query and CDC (Change Data Capture) observable streams.
 
 ## Acceptance Criteria
-- [ ] SQLite connection initializes in OPFS with memory fallback.
-- [ ] Universal document schema created with json_patch support.
-- [ ] CDC observable stream emits verified insert/update/delete events.
+- [x] SQLite connection initializes in OPFS with memory fallback.
+- [x] Universal document schema created with json_patch support.
+- [x] CDC observable stream emits verified insert/update/delete events.

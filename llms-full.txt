@@ -1,0 +1,162 @@
+# @actdim/livestruct - Full Documentation Context
+
+> **Ergonomic, Reactive Document and Record Abstraction over LiveStore (SQLite WASM & Event-Sourcing) for TypeScript Applications**
+
+---
+
+## Document: README.md (Overview)
+
+# @actdim/livestruct
+
+> **Ergonomic, Reactive Document and Record Abstraction over LiveStore (SQLite WASM & Event-Sourcing) for TypeScript Applications**
+
+[![npm version](https://img.shields.io/npm/v/@actdim/livestruct.svg)](https://www.npmjs.com/package/@actdim/livestruct)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9+-blue.svg)](https://www.typescriptlang.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+---
+
+## 1. What is LiveStruct?
+
+**`@actdim/livestruct`** is an ergonomic, headless document abstraction layer built on top of LiveStore (`@livestore/livestore`). It bridges the gap between raw relational SQLite tables, event-sourcing logs, and reactive UI state managers (such as `@actdim/dynstruct` and MobX).
+
+### The Problem It Solves
+
+Raw LiveStore provides rock-solid persistence and automatic multi-tab synchronization using embedded SQLite (WASM and OPFS) and Git-inspired event-sourcing. However, using it directly in interactive UI applications creates major friction:
+
+1. **CQRS & Event-Sourcing Overhead:** Updating a single property in a form or card requires declaring an Effect-TS schema, defining an event, writing a SQL materializer, committing the event, and subscribing to a SQL query.
+2. **Object-Relational Impedance Mismatch:** Modern UI cards and CAD/GIS entities are hierarchical documents, whereas SQLite operates on flat tables and rows.
+3. **Ephemeral UI State vs Durable Commits:** High-frequency interactions (such as 60-120 fps mouse dragging, hover effects, or transient focus) cannot be committed to disk logs without freezing the browser and bloating storage.
+4. **Lack of Encapsulation:** Raw LiveStore separates data tables from mutation events, resulting in anemic models where business logic and validation become scattered across UI components.
+
+### What LiveStruct Provides
+
+- **RxDB-like Ergonomics:** Clean document-oriented API (`collection.get(id)`, `doc.patch({ title: 'New' })`, `doc.$`).
+- **Reactive Engine (RxJS & MobX):** First-class RxJS Observables (`doc.$`) for streams, with seamless MobX bindings for zero-boilerplate UI reactivity.
+- **Dual-Level API Architecture:** High-level ergonomic documents for forms, plus an explicit low-level escape hatch (`doc.engine`) for raw SQL, Change Data Capture (CDC), and binary BLOB access.
+- **Single-File Project Container:** The underlying OPFS SQLite database serves as the self-contained project file (e.g. `.cad`, `.geopackage`) that can be exported or replicated to a server.
+- **Compiler-Verified Safety:** End-to-end TypeScript checking, including guarded nested path checking without compiler recursion stalls.
+
+---
+
+## 2. Quick Code Example
+
+```typescript
+import { createLiveStruct } from '@actdim/livestruct';
+
+// 1. Initialize store
+const store = await createLiveStruct({ name: 'cad_workspace' });
+
+// 2. Obtain collection
+interface PartEntity {
+    id: string;
+    name: string;
+    color: string;
+    layerId: string;
+}
+const parts = await store.collection<PartEntity>('parts');
+
+// 3. Read or create live document
+const doc = await parts.create('part-101', {
+    id: 'part-101',
+    name: 'Bracket A',
+    color: 'blue',
+    layerId: 'structural',
+});
+
+// 4. Reactive stream (RxJS)
+doc.$.subscribe((state) => {
+    console.log('Part updated:', state.name, state.color);
+});
+
+// 5. Ergonomic mutation (commits to SQLite and syncs across tabs automatically)
+await doc.patch({ color: 'red' });
+```
+
+---
+
+## 3. Dual-Level Architecture
+
+LiveStruct strictly separates application concerns into two distinct tiers:
+
+```
++--------------------------------------------------------------------------+
+|                                LiveStruct                                |
++--------------------------------------------------------------------------+
+|  HIGH-LEVEL API (UI Components & Dynstruct Forms)                        |
+|  - Mutable MobX properties & getters: `doc.data.name`                    |
+|  - Ergonomic mutations: `doc.patch({ color: 'red' })`                    |
+|  - Reactive observable stream: `doc.$`                                   |
+|  - Automatic echo cancellation and optimistic updates                    |
++--------------------------------------------------------------------------+
+|  LOW-LEVEL ENGINE API (msgmesh-store & Worker Bridges)                   |
+|  - Raw SQLite queries: `doc.engine.queryRaw(sql, params)`                |
+|  - Raw Event Commit: `doc.engine.commitRaw(event)`                       |
+|  - Change Data Capture (CDC) stream: `doc.engine.cdc$`                   |
+|  - Binary BLOB access for heavy geometry (Float32Array)                  |
++--------------------------------------------------------------------------+
+```
+
+---
+
+## 4. CAD & GIS Document Model
+
+In engineering and geospatial applications, thousands of primitives exist alongside high-frequency user interactions:
+
+1. **Two-Tier Storage:**
+   - **Metadata & Assembly Tree:** Managed by LiveStruct documents (tables with indexed metadata).
+   - **Geometry Coordinates:** Stored as binary SQLite BLOBs (`Float32Array`), passed directly to WebGL/WebGPU without proxy overhead.
+2. **Interaction Separation:**
+   - Interactive drag operations (60-120 fps) stay strictly in-memory over `@actdim/msgmesh`.
+   - On `mouseUp`, a single `doc.patch()` commit persists the finalized state to SQLite.
+3. **Document as a File:**
+   - The SQLite database on OPFS represents the native document file. Exporting is a direct binary stream copy, avoiding massive JSON serialization.
+
+---
+
+## 5. Integration with @actdim/msgmesh
+
+When crossing worker boundaries or decoupling modules:
+- Use `@actdim/msgmesh-store` to bridge `doc.engine.cdc$` into typed message bus channels.
+- Dispatch business commands over MsgMesh (`cad.command.extrude`) rather than invoking storage operations directly from UI toolbars.
+
+---
+
+## 6. Installation
+
+```bash
+pnpm add @actdim/livestruct @actdim/msgmesh @actdim/utico mobx rxjs
+```
+
+---
+
+## Document: docs/topic--architecture.md (System Architecture & Flow)
+
+# System Architecture & Flow
+
+Core technical specification and documentation for livestruct.
+
+## Overview
+Document system components and engineering guidelines here.
+
+---
+
+## Document: docs/topic--domain-model.md (Domain Model & Entity Ecosystem)
+
+# Domain Model & Entity Ecosystem
+
+Core technical specification and documentation for livestruct.
+
+## Overview
+Document system components and engineering guidelines here.
+
+---
+
+## Document: docs/topic--setup-and-workflow.md (Setup, Installation & Agent Workflows)
+
+# Setup, Installation & Agent Workflows
+
+Core technical specification and documentation for livestruct.
+
+## Overview
+Document system components and engineering guidelines here.
