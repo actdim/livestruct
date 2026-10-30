@@ -3,7 +3,8 @@ protocol: along
 protocol_version: "4.5.4"
 slug: dual-api-documents-and-collections
 type: task
-status: open
+status: done
+completed: 2026-10-30
 priority: high
 created: 2026-10-30
 updated: 2026-10-30
@@ -25,6 +26,6 @@ Implement RxDB-like high-level documents with MobX observable properties, `.patc
 - REQ-3: `LiveCollection` MUST provide `get(id)`, `create(id, initialData)`, and reactive `query$`.
 
 ## Acceptance Criteria
-- [ ] `LiveDocument` updates emit on `.$` and update MobX observable getters.
-- [ ] Concurrent mutations from neighboring tabs update local state without cursor jumps.
-- [ ] `engine` property exposes low-level SQLite driver.
+- [x] `LiveDocument` updates emit on `.$` and update MobX observable getters.
+- [x] Concurrent mutations from neighboring tabs update local state without cursor jumps.
+- [x] `engine` property exposes low-level SQLite driver.
