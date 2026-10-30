@@ -1,0 +1,105 @@
+{
+    "name": "@actdim/livestruct",
+    "version": "1.10.2",
+    "description": "Ergonomic, reactive document and record abstraction over LiveStore (reactive SQLite & event-sourcing) for TypeScript applications.",
+    "author": "Pavel Borodaev",
+    "license": "MIT",
+    "type": "module",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/actdim/livestruct.git"
+    },
+    "bugs": {
+        "url": "https://github.com/actdim/livestruct/issues"
+    },
+    "homepage": "https://github.com/actdim/livestruct/#readme",
+    "keywords": [
+        "typescript",
+        "livestore",
+        "sqlite",
+        "local-first",
+        "reactive",
+        "event-sourcing",
+        "opfs",
+        "rxdb",
+        "mobx",
+        "rxjs",
+        "document-store",
+        "active-record",
+        "cad",
+        "gis"
+    ],
+    "files": [
+        "dist",
+        "README.md",
+        "LICENSE"
+    ],
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.es.js"
+        },
+        "./core": {
+            "types": "./dist/core.d.ts",
+            "import": "./dist/core.es.js"
+        },
+        "./engine": {
+            "types": "./dist/engine.d.ts",
+            "import": "./dist/engine.es.js"
+        },
+        "./mesh": {
+            "types": "./dist/mesh.d.ts",
+            "import": "./dist/mesh.es.js"
+        },
+        "./*": {
+            "types": "./dist/*.d.ts",
+            "import": "./dist/*.es.js"
+        }
+    },
+    "typesVersions": {
+        "*": {
+            "*": [
+                "dist/*.d.ts"
+            ]
+        }
+    },
+    "publishConfig": {
+        "access": "public"
+    },
+    "sideEffects": false,
+    "scripts": {
+        "test": "npx vitest --config=vitest.node.config.ts --no-cache",
+        "test:w": "npx vitest --config=vitest.node.config.ts --watch",
+        "build": "tsc -b tsconfig.json && vite build",
+        "typecheck": "tsc -b tsconfig.json",
+        "format": "prettier --write .",
+        "format:check": "prettier --check ."
+    },
+    "peerDependencies": {
+        "@actdim/msgmesh": ">=1.10.2",
+        "@actdim/utico": ">=1.10.2",
+        "mobx": ">=6.10.0",
+        "rxjs": ">=7.8.0"
+    },
+    "peerDependenciesMeta": {
+        "@actdim/msgmesh": {
+            "optional": true
+        },
+        "mobx": {
+            "optional": true
+        }
+    },
+    "devDependencies": {
+        "@actdim/msgmesh": "workspace:*",
+        "@actdim/utico": "workspace:*",
+        "@types/node": "^24.10.0",
+        "mobx": "^6.13.6",
+        "prettier": "^3.5.3",
+        "rxjs": "^7.8.2",
+        "typescript": "^5.9.3",
+        "vite": "^6.2.1",
+        "vite-plugin-dts": "^4.5.4",
+        "vite-tsconfig-paths": "^5.1.4",
+        "vitest": "^3.0.9"
+    }
+}
