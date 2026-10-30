@@ -3,7 +3,8 @@ protocol: along
 protocol_version: "4.5.4"
 slug: type-safe-nested-path-checking
 type: task
-status: open
+status: done
+completed: 2026-10-30
 priority: medium
 created: 2026-10-30
 updated: 2026-10-30
@@ -25,6 +26,6 @@ Implement compile-time type-checked property path resolution (e.g. `'layer.featu
 - REQ-3: Runtime path lens MUST safely resolve nested values without throwing on undefined segments.
 
 ## Acceptance Criteria
-- [ ] Compile-time autocomplete for nested paths up to 4 levels deep.
-- [ ] Typo in path string produces compile error.
-- [ ] Unit tests verify runtime path traversal and bounds checking.
+- [x] Compile-time autocomplete for nested paths up to 4 levels deep.
+- [x] Typo in path string produces compile error.
+- [x] Unit tests verify runtime path traversal and bounds checking.
