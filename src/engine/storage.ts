@@ -42,6 +42,7 @@ export class MemoryStorageAdapter implements StorageAdapter {
 export class OpfsStorageAdapter implements StorageAdapter {
     readonly mode: StorageMode = 'opfs';
     private rootDirPromise: Promise<FileSystemDirectoryHandle> | null = null;
+    private writeQueue: Promise<void> = Promise.resolve();
 
     private getRootDirectory(): Promise<FileSystemDirectoryHandle> {
         if (!this.rootDirPromise) {
@@ -85,13 +86,32 @@ export class OpfsStorageAdapter implements StorageAdapter {
     }
 
     async write(path: string, data: Uint8Array): Promise<void> {
-        const handle = await this.resolveFileHandle(path, true);
-        if (!handle) {
-            throw new Error(`Failed to resolve file handle for write: ${path}`);
-        }
-        const writable = await handle.createWritable();
-        await writable.write(data as unknown as BufferSource);
-        await writable.close();
+        const executeWrite = async () => {
+            const handle = await this.resolveFileHandle(path, true);
+            if (!handle) {
+                throw new Error(`Failed to resolve file handle for write: ${path}`);
+            }
+
+            let attempts = 0;
+            while (attempts < 5) {
+                try {
+                    const writable = await handle.createWritable();
+                    await writable.write(data as unknown as BufferSource);
+                    await writable.close();
+                    return;
+                } catch (err) {
+                    attempts++;
+                    if (attempts >= 5) {
+                        throw err;
+                    }
+                    await new Promise((resolve) => setTimeout(resolve, attempts * 25));
+                }
+            }
+        };
+
+        const currentTask = this.writeQueue.then(executeWrite, executeWrite);
+        this.writeQueue = currentTask.catch(() => {});
+        return currentTask;
     }
 
     async delete(path: string): Promise<void> {
