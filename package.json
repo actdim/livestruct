@@ -1,6 +1,6 @@
 {
     "name": "@actdim/livestruct",
-    "version": "1.11.0",
+    "version": "1.12.0",
     "description": "Ergonomic, reactive document and record abstraction over LiveStore (reactive SQLite & event-sourcing) for TypeScript applications.",
     "author": "Pavel Borodaev",
     "license": "MIT",
@@ -86,8 +86,8 @@
         "format:check": "prettier --check ."
     },
     "peerDependencies": {
-        "@actdim/msgmesh": ">=1.11.0",
-        "@actdim/utico": ">=1.11.0",
+        "@actdim/msgmesh": ">=1.12.0",
+        "@actdim/utico": ">=1.12.0",
         "@livestore/adapter-web": "0.5.0",
         "@livestore/livestore": "0.5.0",
         "effect": "4.0.3",
@@ -100,8 +100,8 @@
         }
     },
     "devDependencies": {
-        "@actdim/msgmesh": ">=1.11.0",
-        "@actdim/utico": ">=1.11.0",
+        "@actdim/msgmesh": ">=1.12.0",
+        "@actdim/utico": ">=1.12.0",
         "@playwright/test": "^1.63.0",
         "@types/node": "^24.10.0",
         "mobx": "^6.13.6",
