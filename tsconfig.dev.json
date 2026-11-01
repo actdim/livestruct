@@ -19,6 +19,7 @@
     "include": [
         "src/**/*.ts",
         "tests/**/*.ts",
+        "spikes/**/*.ts",
         "packageConfig.ts",
         "package.json",
         "vite.config.ts",

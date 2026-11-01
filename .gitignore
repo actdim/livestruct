@@ -3,3 +3,11 @@ dist
 .out
 *.tsbuildinfo
 .DS_Store
+
+# Along ephemeral session and diagnostics
+.along/.session/
+.along/diagnostics/
+.along/artifacts/
+.along/dashboard.html
+.along/DASHBOARD.md
+

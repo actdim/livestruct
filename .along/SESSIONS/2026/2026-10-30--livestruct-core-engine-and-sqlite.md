@@ -7,7 +7,6 @@ agent: antigravity
 branch: main
 commit: 10b42a8
 summary: 'feat(livestruct): implement core engine and sqlite driver'
-milestone: v2.0.0-along-transition
 issues_advanced: []
 issues_completed: [task--livestruct-core-engine-and-sqlite]
 decisions: []

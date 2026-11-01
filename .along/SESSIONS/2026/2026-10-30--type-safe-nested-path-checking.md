@@ -7,7 +7,6 @@ agent: antigravity
 branch: main
 commit: 21e1c9e
 summary: 'feat(livestruct): implement type-safe nested path checking with recursion guards'
-milestone: v2.0.0-along-transition
 issues_advanced: []
 issues_completed: [task--type-safe-nested-path-checking]
 decisions: []

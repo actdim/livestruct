@@ -7,7 +7,6 @@ agent: antigravity
 branch: main
 commit: '4274702'
 summary: 'feat(livestruct): implement LiveDocument and LiveCollection dual-level API'
-milestone: v2.0.0-along-transition
 issues_advanced: []
 issues_completed: [task--dual-api-documents-and-collections]
 decisions: []

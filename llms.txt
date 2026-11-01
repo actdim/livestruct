@@ -4,7 +4,10 @@
 
 ## Documentation Links
 - [README.md](README.md): Overview, quick installation, and full skill list.
+- [AGENTS.md](AGENTS.md): Active ALONG-PROTOCOL conventions and instructions.
 - [docs/INDEX.md](docs/INDEX.md): Central Knowledge Base topic catalog.
+- [docs/topic--along-protocol.md](docs/topic--along-protocol.md): Along Protocol Reference.
 - [docs/topic--architecture.md](docs/topic--architecture.md): System Architecture & Flow.
 - [docs/topic--domain-model.md](docs/topic--domain-model.md): Domain Model & Entity Ecosystem.
+- [docs/topic--livestore-integration.md](docs/topic--livestore-integration.md): LiveStore 0.5.0 Integration & Architectural Spike.
 - [docs/topic--setup-and-workflow.md](docs/topic--setup-and-workflow.md): Setup, Installation & Agent Workflows.

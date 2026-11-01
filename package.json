@@ -100,6 +100,12 @@
         "vite": "^6.2.1",
         "vite-plugin-dts": "^4.5.4",
         "vite-tsconfig-paths": "^5.1.4",
-        "vitest": "^3.0.9"
+        "vitest": "^3.0.9",
+        "@livestore/livestore": "catalog:",
+        "@livestore/adapter-web": "catalog:",
+        "@livestore/wa-sqlite": "catalog:",
+        "effect": "catalog:",
+        "@opentelemetry/api": "catalog:",
+        "@standard-schema/spec": "catalog:"
     }
 }
