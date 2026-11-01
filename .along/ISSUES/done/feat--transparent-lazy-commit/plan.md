@@ -1,3 +1,7 @@
+# Living Plan: transparent-lazy-commit
+
+## Revision 1 (2026-11-01T02:41:05Z, plan approve --plan-file)
+
 ---
 protocol: along
 protocol_version: "4.5.4"

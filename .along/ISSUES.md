@@ -1,7 +1,7 @@
 # Active Issues
 
 ## Active
-- [ ] `(feat)` [transparent-lazy-commit](ISSUES/feat--transparent-lazy-commit.md)
+<!-- No active issues -->
 
 ## Backlog
 - [ ] `(bug)` [engine-correctness-batch](ISSUES/bug--engine-correctness-batch.md)
@@ -9,8 +9,8 @@
 
 ## Done (recent)
 - [x] `(spike)` [livestore-integration](ISSUES/done/spike--livestore-integration.md)
+- [x] `(feat)` [transparent-lazy-commit](ISSUES/done/feat--transparent-lazy-commit.md)
 - [x] `(feat)` [livestore-engine](ISSUES/done/feat--livestore-engine.md)
 - [~] `(bug)` [cross-context-last-writer-wins](ISSUES/done/bug--cross-context-last-writer-wins.md)
 - [x] `(task)` [type-safe-nested-path-checking](ISSUES/done/task--type-safe-nested-path-checking.md)
-- [x] `(task)` [livestruct-core-engine-and-sqlite](ISSUES/done/task--livestruct-core-engine-and-sqlite.md)
-<!-- 1 older completed issue(s) archived in .along/ISSUES/done/ -->
+<!-- 2 older completed issue(s) archived in .along/ISSUES/done/ -->
