@@ -72,6 +72,11 @@ export interface LiveStructConfig {
     name: string;
     storagePath?: string;
     forceMemory?: boolean;
+    sessionId?: string;
+    disableDevtools?: boolean;
+    confirmUnsavedChanges?: boolean;
+    worker?: any;
+    sharedWorker?: any;
 }
 
 /**

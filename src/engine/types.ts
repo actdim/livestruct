@@ -4,7 +4,7 @@
 
 import type { Observable } from 'rxjs';
 
-export type StorageMode = 'opfs' | 'memory';
+export type StorageMode = 'opfs' | 'single-tab' | 'memory' | 'persisted' | 'in-memory';
 
 export interface StorageAdapter {
     readonly mode: StorageMode;
@@ -30,12 +30,15 @@ export type CDCEventType = 'insert' | 'update' | 'delete';
 
 export interface CDCEvent<T = unknown> {
     readonly type: CDCEventType;
+    readonly kind?: CDCEventType;
     readonly collection: string;
     readonly id: string;
     readonly rev: number;
     readonly delta: Partial<T>;
+    readonly data?: T;
     readonly timestamp: number;
     readonly mutationId?: string;
+    readonly origin?: 'local' | 'remote' | 'migration' | string;
 }
 
 export interface RawCommitEvent<T = unknown> {
@@ -46,17 +49,32 @@ export interface RawCommitEvent<T = unknown> {
     readonly blobs?: BlobMap;
     readonly rev?: number;
     readonly mutationId?: string;
+    readonly origin?: string;
 }
 
 export interface EngineConfig {
     name: string;
     storagePath?: string;
     forceMemory?: boolean;
+    sessionId?: string;
+    disableDevtools?: boolean;
+    confirmUnsavedChanges?: boolean;
+    worker?: any;
+    sharedWorker?: any;
 }
 
 export interface LiveEngineAccess<T = unknown> {
     readonly tableName: string;
     commitRaw(event: unknown): Promise<void>;
     queryRaw<R = unknown>(sql: string, params?: unknown[]): Promise<R[]>;
-    readonly cdc$: Observable<{ type: 'insert' | 'update' | 'delete'; id: string; delta: Partial<T>; rev?: number; mutationId?: string }>;
+    readonly cdc$: Observable<{
+        type: 'insert' | 'update' | 'delete';
+        id: string;
+        delta: Partial<T>;
+        rev?: number;
+        mutationId?: string;
+        origin?: string;
+        kind?: string;
+        data?: T;
+    }>;
 }

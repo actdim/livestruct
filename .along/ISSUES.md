@@ -1,12 +1,11 @@
 # Active Issues
 
 ## Active
-<!-- No active issues -->
+- [ ] `(feat)` [livestore-engine](ISSUES/feat--livestore-engine.md)
 
 ## Backlog
 - [ ] `(bug)` [engine-correctness-batch](ISSUES/bug--engine-correctness-batch.md)
 - [ ] `(debt)` [test-coverage-and-naming](ISSUES/debt--test-coverage-and-naming.md)
-- [ ] `(feat)` [livestore-engine](ISSUES/feat--livestore-engine.md)
 - [ ] `(feat)` [transparent-lazy-commit](ISSUES/feat--transparent-lazy-commit.md)
 
 ## Done (recent)

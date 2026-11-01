@@ -22,6 +22,11 @@ export async function createLiveStruct(config: LiveStructConfig): Promise<LiveSt
         name: config.name,
         storagePath: config.storagePath,
         forceMemory: config.forceMemory,
+        sessionId: config.sessionId,
+        disableDevtools: config.disableDevtools,
+        confirmUnsavedChanges: config.confirmUnsavedChanges,
+        worker: config.worker,
+        sharedWorker: config.sharedWorker,
     });
 
     const collections = new Map<string, LiveCollection<any>>();

@@ -3,7 +3,7 @@ protocol: along
 protocol_version: "4.5.4"
 slug: livestore-engine
 type: feat
-status: open
+status: in-progress
 priority: high
 created: 2026-10-31
 updated: 2026-11-01
@@ -85,11 +85,11 @@ runs on the UI thread.
 - REQ-10: README, package.json description/keywords and `docs/topic--architecture.md` MUST describe the real architecture.
 
 ## Acceptance Criteria
-- [ ] `grep -rn "persistToStorage\|createWritable" src/engine` returns nothing outside `storage.ts`/`migrateV1.ts`.
-- [ ] livestruct `pnpm test` and `tsc -b` green; msgmesh-store `pnpm test` green with no msgmesh-store source changes (or each change listed and justified).
-- [ ] Browser check in livestruct-demo (dev and `vite build && vite preview`): `store.storageMode === 'persisted'`; a write in iframe A appears in iframe B and the host; all values survive a full reload; no beforeunload prompt; console has 0 errors.
-- [ ] Main-thread cost: `doc.patch` -> `store.commit` on a 50-shape document p95 <= 4 ms in Chrome (n>=500), measured and recorded.
-- [ ] README/package.json/docs describe LiveStore-backed architecture; `along lint` clean.
+- [x] `grep -rn "persistToStorage\|createWritable" src/engine` returns nothing outside `storage.ts`/`migrateV1.ts`.
+- [x] livestruct `pnpm test` and `tsc -b` green; msgmesh-store `pnpm test` green with no msgmesh-store source changes (or each change listed and justified).
+- [x] Browser check in livestruct-demo (dev and `vite build && vite preview`): `store.storageMode === 'persisted'`; a write in iframe A appears in iframe B and the host; all values survive a full reload; no beforeunload prompt; console has 0 errors.
+- [x] Main-thread cost: `doc.patch` -> `store.commit` on a 50-shape document p95 <= 4 ms in Chrome (n>=500), measured and recorded.
+- [x] README/package.json/docs describe LiveStore-backed architecture; `along lint` clean.
 
 ## Plan
 
@@ -140,11 +140,11 @@ Tests (Vitest node, `makeInMemoryAdapter`)
 - msgmesh-store suite passes against the new engine (run it in this ticket).
 
 Acceptance
-- [ ] `grep -rn "persistToStorage\|createWritable" src/engine` returns nothing outside `storage.ts`/`migrateV1.ts`.
-- [ ] livestruct `pnpm test` and `tsc -b` green; msgmesh-store `pnpm test` green with no msgmesh-store source changes (or each change listed and justified).
-- [ ] Browser check in livestruct-demo (dev and `vite build && vite preview`): `store.storageMode === 'persisted'`; a write in iframe A appears in iframe B and the host; all values survive a full reload; no beforeunload prompt; console has 0 errors.
-- [ ] Main-thread cost: `doc.patch` -> `store.commit` on a 50-shape document p95 <= 4 ms in Chrome (n>=500), measured and recorded.
-- [ ] README/package.json/docs describe LiveStore-backed architecture; `along lint` clean.
+- [x] `grep -rn "persistToStorage\|createWritable" src/engine` returns nothing outside `storage.ts`/`migrateV1.ts`.
+- [x] livestruct `pnpm test` and `tsc -b` green; msgmesh-store `pnpm test` green with no msgmesh-store source changes (or each change listed and justified).
+- [x] Browser check in livestruct-demo (dev and `vite build && vite preview`): `store.storageMode === 'persisted'`; a write in iframe A appears in iframe B and the host; all values survive a full reload; no beforeunload prompt; console has 0 errors.
+- [x] Main-thread cost: `doc.patch` -> `store.commit` on a 50-shape document p95 <= 4 ms in Chrome (n>=500), measured and recorded.
+- [x] README/package.json/docs describe LiveStore-backed architecture; `along lint` clean.
 
 ## Ticket map and launch order
 

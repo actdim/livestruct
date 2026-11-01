@@ -10,24 +10,26 @@
 
 ## 1. What is LiveStruct?
 
-**`@actdim/livestruct`** is an ergonomic, headless document abstraction layer built on top of LiveStore (`@livestore/livestore`). It bridges the gap between raw relational SQLite tables, event-sourcing logs, and reactive UI state managers (such as `@actdim/dynstruct` and MobX).
+**`@actdim/livestruct`** is an ergonomic document abstraction layer built on top of LiveStore (`@livestore/livestore`). It bridges relational SQLite tables, background event-sourcing workers, and reactive UI state managers (such as `@actdim/dynstruct` and MobX).
 
 ### The Problem It Solves
 
-Raw LiveStore provides rock-solid persistence and automatic multi-tab synchronization using embedded SQLite (WASM and OPFS) and Git-inspired event-sourcing. However, using it directly in interactive UI applications creates major friction:
+Raw LiveStore provides robust persistence and multi-tab synchronization using embedded SQLite (WASM and OPFS) and event-sourcing. However, using it directly in interactive UI applications creates friction:
 
-1. **CQRS & Event-Sourcing Overhead:** Updating a single property in a form or card requires declaring an Effect-TS schema, defining an event, writing a SQL materializer, committing the event, and subscribing to a SQL query.
-2. **Object-Relational Impedance Mismatch:** Modern UI cards and CAD/GIS entities are hierarchical documents, whereas SQLite operates on flat tables and rows.
-3. **Ephemeral UI State vs Durable Commits:** High-frequency interactions (such as 60-120 fps mouse dragging, hover effects, or transient focus) cannot be committed to disk logs without freezing the browser and bloating storage.
-4. **Lack of Encapsulation:** Raw LiveStore separates data tables from mutation events, resulting in anemic models where business logic and validation become scattered across UI components.
+1. **CQRS & Event-Sourcing Overhead:** Updating a single property requires declaring an Effect-TS schema, defining an event, writing a SQL materializer, committing the event, and subscribing to a SQL query.
+2. **Object-Relational Mismatch:** UI cards and CAD/GIS entities are hierarchical documents, whereas SQLite operates on flat tables and rows.
+3. **Ephemeral UI State vs Durable Commits:** High-frequency interactions (such as 60-120 fps mouse dragging or transient focus) cannot be committed to disk logs without freezing the browser and bloating storage.
+4. **Lack of Encapsulation:** Raw LiveStore separates data tables from mutation events, resulting in logic scattered across components.
 
 ### What LiveStruct Provides
 
 - **RxDB-like Ergonomics:** Clean document-oriented API (`collection.get(id)`, `doc.patch({ title: 'New' })`, `doc.$`).
 - **Reactive Engine (RxJS & MobX):** First-class RxJS Observables (`doc.$`) for streams, with seamless MobX bindings for zero-boilerplate UI reactivity.
-- **Dual-Level API Architecture:** High-level ergonomic documents for forms, plus an explicit low-level escape hatch (`doc.engine`) for raw SQL, Change Data Capture (CDC), and binary BLOB access.
-- **Single-File Project Container:** The underlying OPFS SQLite database serves as the self-contained project file (e.g. `.cad`, `.geopackage`) that can be exported or replicated to a server.
-- **Compiler-Verified Safety:** End-to-end TypeScript checking, including guarded nested path checking without compiler recursion stalls.
+- **Built-in Universal Schema:** Out-of-the-box `docs` table with native RFC 7396 `json_patch()` materializers. No manual schema authoring required.
+- **OPFS Leader Dedicated Worker:** Storage I/O and SQLite event logging run off the main thread in a dedicated leader worker (`@actdim/livestruct/worker`).
+- **SharedWorker Synchronization:** Multiple tabs and same-origin iframes share a single leader writer via `@actdim/livestruct/shared-worker`.
+- **Content-Addressed BlobStore:** Heavy binary arrays (`Float32Array`, `Uint8Array`) are stored out-of-band in OPFS (`livestruct-blobs/<sha256>`), keeping eventlog commits compact.
+- **Dual-Level Architecture:** High-level ergonomic documents for forms, plus an explicit low-level escape hatch (`doc.engine`) for raw SQL queries, Change Data Capture (CDC), and binary BLOB access.
 
 ---
 
@@ -36,7 +38,7 @@ Raw LiveStore provides rock-solid persistence and automatic multi-tab synchroniz
 ```typescript
 import { createLiveStruct } from '@actdim/livestruct';
 
-// 1. Initialize store
+// 1. Initialize store (defaults to OPFS leader worker in browser, in-memory in Node)
 const store = await createLiveStruct({ name: 'cad_workspace' });
 
 // 2. Obtain collection
@@ -67,11 +69,43 @@ await doc.patch({ color: 'red' });
 
 ---
 
-## 3. Dual-Level Architecture
+## 3. Worker Configuration (Vite)
 
-LiveStruct strictly separates application concerns into two distinct tiers:
+In browser applications bundled with Vite, configure your app to import the shipped workers:
 
+```typescript
+// vite.config.ts
+export default defineConfig({
+    worker: {
+        format: 'es',
+    },
+    optimizeDeps: {
+        exclude: ['@livestore/wa-sqlite'],
+    },
+});
 ```
+
+And pass the worker constructors when initializing:
+
+```typescript
+import { createLiveStruct } from '@actdim/livestruct';
+import LiveWorker from '@actdim/livestruct/worker?worker';
+import LiveSharedWorker from '@actdim/livestruct/shared-worker?sharedworker';
+
+const store = await createLiveStruct({
+    name: 'my_app',
+    worker: LiveWorker,
+    sharedWorker: LiveSharedWorker,
+});
+```
+
+---
+
+## 4. Dual-Level Architecture
+
+LiveStruct separates application concerns into two distinct tiers:
+
+```text
 +--------------------------------------------------------------------------+
 |                                LiveStruct                                |
 +--------------------------------------------------------------------------+
@@ -85,28 +119,28 @@ LiveStruct strictly separates application concerns into two distinct tiers:
 |  - Raw SQLite queries: `doc.engine.queryRaw(sql, params)`                |
 |  - Raw Event Commit: `doc.engine.commitRaw(event)`                       |
 |  - Change Data Capture (CDC) stream: `doc.engine.cdc$`                   |
-|  - Binary BLOB access for heavy geometry (Float32Array)                  |
+|  - Content-addressed binary BLOB access (Float32Array / Uint8Array)      |
 +--------------------------------------------------------------------------+
 ```
 
 ---
 
-## 4. CAD & GIS Document Model
+## 5. CAD & GIS Document Model
 
 In engineering and geospatial applications, thousands of primitives exist alongside high-frequency user interactions:
 
 1. **Two-Tier Storage:**
-   - **Metadata & Assembly Tree:** Managed by LiveStruct documents (tables with indexed metadata).
-   - **Geometry Coordinates:** Stored as binary SQLite BLOBs (`Float32Array`), passed directly to WebGL/WebGPU without proxy overhead.
+   - **Metadata & Properties:** Managed by LiveStruct documents (stored as JSON in SQLite `docs` table).
+   - **Geometry Coordinates:** Stored as content-addressed binary BLOBs (`Float32Array`), passed directly to WebGL/WebGPU without serialization overhead.
 2. **Interaction Separation:**
    - Interactive drag operations (60-120 fps) stay strictly in-memory over `@actdim/msgmesh`.
    - On `mouseUp`, a single `doc.patch()` commit persists the finalized state to SQLite.
 3. **Document as a File:**
-   - The SQLite database on OPFS represents the native document file. Exporting is a direct binary stream copy, avoiding massive JSON serialization.
+   - The SQLite database on OPFS represents the native document file. Exporting is a direct binary stream copy, avoiding massive JSON dumps.
 
 ---
 
-## 5. Integration with @actdim/msgmesh
+## 6. Integration with @actdim/msgmesh
 
 When crossing worker boundaries or decoupling modules:
 - Use `@actdim/msgmesh-store` to bridge `doc.engine.cdc$` into typed message bus channels.
@@ -114,7 +148,7 @@ When crossing worker boundaries or decoupling modules:
 
 ---
 
-## 6. Installation
+## 7. Installation
 
 ```bash
 pnpm add @actdim/livestruct @actdim/msgmesh @actdim/utico mobx rxjs
