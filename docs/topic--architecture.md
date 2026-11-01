@@ -102,3 +102,46 @@ Existing v1 JSON databases (`<name>.db`) are automatically detected on first lau
 2. Binary blobs are stored in the content-addressed BlobStore.
 3. Documents are batch-committed to LiveStore with `origin: 'migration'`.
 4. The legacy file is renamed to `<name>.db.migrated`, ensuring migration runs exactly once.
+
+## 7. Working with High-Frequency Updates (Transparent Lazy Commits & Overlays)
+
+LiveStore commits are synchronous on the UI thread and append permanent entries to the eventlog. High-frequency mutations (such as 60-120 Hz drag operations, canvas transformations, or slider dragging) cannot commit to SQLite on every tick without freezing the frame or bloating storage.
+
+LiveStruct solves this transparently through an in-memory view layer, coalescing commit scheduler, and lightweight overlay broadcast channel:
+
+### 7.1 Instant Local Updates (Plain Object Feel)
+- Calling `doc.patch(...)` or `doc.patchPath(...)` updates `doc.data` immediately and synchronously.
+- Local subscriptions (`doc.$`) and MobX atoms fire synchronously in the current microtask.
+- Local Change Data Capture (`doc.engine.cdc$`) emits immediately with `origin: 'local'`.
+- There is NO synchronous `store.commit` in the `doc.patch` call stack (O(1) execution time, sub-millisecond p99 latency).
+
+### 7.2 Coalesced CommitScheduler
+- Pending patches for a document are coalesced into a single RFC 7396 patch using structural sharing and preserving null tombstones.
+- Commit timing is controlled by two timers:
+  - Trailing debounce window: `commitDelayMs` (default: 150 ms).
+  - Upper bounded wait deadline: `maxCommitWaitMs` (default: 1000 ms).
+- When multiple documents become due in the same tick, they are committed to SQLite in a single transaction (`commitBatchedPatches`).
+- Configuration: Set globally via `createLiveStruct({ commitPolicy: 'lazy', commitDelayMs: 150, maxCommitWaitMs: 1000 })` or per document via `collection.get(id, { commitPolicy: 'immediate' })`.
+
+### 7.3 Flush Semantics and Lifecycle Integration
+- Manual flushing: `doc.flush()`, `collection.flush()`, or `store.flush()` commits all pending patches synchronously and resolves after the commit is written to SQLite.
+- Automatic flushing: Store instances register listeners on `pagehide` and `visibilitychange` (state `hidden`) to flush all dirty documents before context tear-down.
+- Graceful shutdown: `store.close()` flushes all pending mutations before terminating workers.
+- Promise lifecycle: The Promise returned by `doc.patch(...)` resolves only when the patch is durably committed to SQLite. Callers that do not await are never blocked.
+
+### 7.4 Live Real-Time Overlays (Cross-Context Tentative Updates)
+- High-frequency mutations are shared across same-origin contexts (tabs, iframes) via `OverlayChannel` over a shared BroadcastChannel (`livestruct:<storeId>:overlay`).
+- Frame coalescing: The sender throttles transmissions to at most one message per document per animation frame (~16 ms, using `requestAnimationFrame` with fallback to 16 ms timer).
+- Receiver state: Remote contexts apply the tentative patch to their in-memory document view without touching SQLite, marking `doc.isTentative === true`.
+- Zero persistence: Overlays never touch SQLite or the permanent eventlog.
+- Automatic cleanup: Tentative overlays are dropped immediately when a matching commit arrives (tracked by unique `overlayId`) or when `overlayTtlMs` (default: 1500 ms) expires.
+
+### 7.5 CDC Rebase and Notification Suppression
+- When a remote commit arrives from LiveStore, LiveStruct computes:
+  `view = remoteCommitted + localPendingPatches`
+- If the rebased view is structurally identical to the previous view (`deepEquals`), subscriber notifications are suppressed, preventing redundant DOM re-renders.
+
+### 7.6 Error Recovery and Rollback
+- If a deferred commit fails (e.g. SQLite validation failure or shutdown abort), affected pending patches are rolled back to the last committed state.
+- Associated pending Promises reject, and errors are dispatched to `doc.errors$` and `store.errors$`.
+

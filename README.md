@@ -29,6 +29,7 @@ Raw LiveStore provides robust persistence and multi-tab synchronization using em
 - **OPFS Leader Dedicated Worker:** Storage I/O and SQLite event logging run off the main thread in a dedicated leader worker (`@actdim/livestruct/worker`).
 - **SharedWorker Synchronization:** Multiple tabs and same-origin iframes share a single leader writer via `@actdim/livestruct/shared-worker`.
 - **Content-Addressed BlobStore:** Heavy binary arrays (`Float32Array`, `Uint8Array`) are stored out-of-band in OPFS (`livestruct-blobs/<sha256>`), keeping eventlog commits compact.
+- **Transparent Lazy Commits & Overlays:** Mutate documents like plain in-memory objects (sub-millisecond synchronous updates). Background commits to SQLite are coalesced and debounced, while tentative values stream to other tabs/iframes over a BroadcastChannel without eventlog bloat.
 - **Dual-Level Architecture:** High-level ergonomic documents for forms, plus an explicit low-level escape hatch (`doc.engine`) for raw SQL queries, Change Data Capture (CDC), and binary BLOB access.
 
 ---
@@ -125,22 +126,50 @@ LiveStruct separates application concerns into two distinct tiers:
 
 ---
 
-## 5. CAD & GIS Document Model
+## 5. Transparent Lazy Commits & Real-Time Live Overlays
+
+High-frequency operations (such as 60-120 Hz dragging, slider adjustments, or rapid text input) can safely invoke `doc.patch(...)` or proxy setters directly without custom throttling boilerplate:
+
+```typescript
+// Rapid mutations execute instantly in RAM (p99 < 0.1 ms)
+function onPointerMove(x: number, y: number) {
+    doc.patch({ position: { x, y } });
+    // Synchronously visible in doc.data immediately:
+    console.log(doc.data.position); // { x, y }
+    console.log(doc.isPending);     // true (awaiting debounced commit)
+}
+
+// Ensure durable commit when an interaction finishes (e.g. pointerUp)
+async function onPointerUp() {
+    await doc.flush();
+    console.log(doc.isPending); // false
+}
+```
+
+### Key Capabilities
+- **Coalesced Commits:** Multiple rapid patches within a commit window (`commitDelayMs: 150`, `maxCommitWaitMs: 1000`) are merged into a single atomic SQLite commit.
+- **Cross-Context Overlays:** Other open tabs or iframes receive tentative values via `OverlayChannel` (at most 1 message per frame, ~16 ms) with `doc.isTentative === true` without writing to the eventlog.
+- **Lifecycle Integration:** Dirty state flushes automatically on `pagehide`, `visibilitychange` (hidden), and `store.close()`.
+- **Policy Control:** Configure globally or per-document (`commitPolicy: 'lazy' | 'immediate'`).
+- **Error Streams:** Deferred commit failures reject pending Promises, roll back uncommitted patches, and emit on `doc.errors$` and `store.errors$`.
+
+---
+
+## 6. CAD & GIS Document Model
 
 In engineering and geospatial applications, thousands of primitives exist alongside high-frequency user interactions:
 
 1. **Two-Tier Storage:**
    - **Metadata & Properties:** Managed by LiveStruct documents (stored as JSON in SQLite `docs` table).
    - **Geometry Coordinates:** Stored as content-addressed binary BLOBs (`Float32Array`), passed directly to WebGL/WebGPU without serialization overhead.
-2. **Interaction Separation:**
-   - Interactive drag operations (60-120 fps) stay strictly in-memory over `@actdim/msgmesh`.
-   - On `mouseUp`, a single `doc.patch()` commit persists the finalized state to SQLite.
+2. **High-Frequency Interactions:**
+   - Direct `doc.patch()` calls during 60-120 fps drag operations are debounced automatically by the CommitScheduler and broadcast as tentative overlays, avoiding UI thread freezing and eventlog bloat.
 3. **Document as a File:**
    - The SQLite database on OPFS represents the native document file. Exporting is a direct binary stream copy, avoiding massive JSON dumps.
 
 ---
 
-## 6. Integration with @actdim/msgmesh
+## 7. Integration with @actdim/msgmesh
 
 When crossing worker boundaries or decoupling modules:
 - Use `@actdim/msgmesh-store` to bridge `doc.engine.cdc$` into typed message bus channels.
@@ -148,7 +177,7 @@ When crossing worker boundaries or decoupling modules:
 
 ---
 
-## 7. Installation
+## 8. Installation
 
 ```bash
 pnpm add @actdim/livestruct @actdim/msgmesh @actdim/utico mobx rxjs

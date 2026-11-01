@@ -21,6 +21,7 @@ export const docs = State.SQLite.table({
         updatedAt: State.SQLite.integer({ default: 0, nullable: false }),
         blobs: State.SQLite.text({ default: '{}', nullable: false }),
         mutationId: State.SQLite.text({ default: '', nullable: false }),
+        overlayId: State.SQLite.text({ default: '', nullable: false }),
         origin: State.SQLite.text({ default: '', nullable: false }),
     },
     indexes: [
@@ -46,6 +47,7 @@ export const events = {
             data: Schema.String,
             blobs: Schema.optional(Schema.String),
             mutationId: Schema.String,
+            overlayId: Schema.optional(Schema.String),
             origin: Schema.String,
             updatedAt: Schema.Number,
         }),
@@ -58,6 +60,7 @@ export const events = {
             data: Schema.String,
             blobs: Schema.optional(Schema.String),
             mutationId: Schema.String,
+            overlayId: Schema.optional(Schema.String),
             origin: Schema.String,
             updatedAt: Schema.Number,
         }),
@@ -70,6 +73,7 @@ export const events = {
             patch: Schema.String,
             blobs: Schema.optional(Schema.String),
             mutationId: Schema.String,
+            overlayId: Schema.optional(Schema.String),
             origin: Schema.String,
             updatedAt: Schema.Number,
         }),
@@ -82,6 +86,7 @@ export const events = {
             path: Schema.String,
             value: Schema.String,
             mutationId: Schema.String,
+            overlayId: Schema.optional(Schema.String),
             origin: Schema.String,
             updatedAt: Schema.Number,
         }),
@@ -106,45 +111,47 @@ export function makeDocKey(collection: string, id: string): string {
 }
 
 const materializers = State.SQLite.materializers(events, {
-    'livestruct.v1.DocInserted': ({ collection, id, data, blobs, mutationId, origin, updatedAt }) => {
+    'livestruct.v1.DocInserted': ({ collection, id, data, blobs, mutationId, overlayId, origin, updatedAt }) => {
         const key = makeDocKey(collection, id);
         return {
-            sql: 'INSERT INTO docs (key, collection, id, body, rev, updatedAt, blobs, mutationId, origin) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?) ON CONFLICT (key) DO NOTHING',
-            bindValues: [key, collection, id, data, updatedAt, blobs ?? '{}', mutationId, origin],
+            sql: 'INSERT INTO docs (key, collection, id, body, rev, updatedAt, blobs, mutationId, overlayId, origin) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?) ON CONFLICT (key) DO NOTHING',
+            bindValues: [key, collection, id, data, updatedAt, blobs ?? '{}', mutationId, overlayId ?? '', origin],
             writeTables: new Set(['docs']),
         };
     },
 
-    'livestruct.v1.DocReplaced': ({ collection, id, data, blobs, mutationId, origin, updatedAt }) => {
+    'livestruct.v1.DocReplaced': ({ collection, id, data, blobs, mutationId, overlayId, origin, updatedAt }) => {
         const key = makeDocKey(collection, id);
         return {
-            sql: 'INSERT INTO docs (key, collection, id, body, rev, updatedAt, blobs, mutationId, origin) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?) ON CONFLICT (key) DO UPDATE SET body = excluded.body, rev = docs.rev + 1, updatedAt = excluded.updatedAt, blobs = excluded.blobs, mutationId = excluded.mutationId, origin = excluded.origin',
-            bindValues: [key, collection, id, data, updatedAt, blobs ?? '{}', mutationId, origin],
+            sql: 'INSERT INTO docs (key, collection, id, body, rev, updatedAt, blobs, mutationId, overlayId, origin) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?) ON CONFLICT (key) DO UPDATE SET body = excluded.body, rev = docs.rev + 1, updatedAt = excluded.updatedAt, blobs = excluded.blobs, mutationId = excluded.mutationId, overlayId = excluded.overlayId, origin = excluded.origin',
+            bindValues: [key, collection, id, data, updatedAt, blobs ?? '{}', mutationId, overlayId ?? '', origin],
             writeTables: new Set(['docs']),
         };
     },
 
-    'livestruct.v1.DocPatched': ({ collection, id, patch, blobs, mutationId, origin, updatedAt }) => {
+    'livestruct.v1.DocPatched': ({ collection, id, patch, blobs, mutationId, overlayId, origin, updatedAt }) => {
         const key = makeDocKey(collection, id);
+        const ovl = overlayId ?? '';
         if (blobs !== undefined) {
             return {
-                sql: 'UPDATE docs SET body = json_patch(body, ?), rev = rev + 1, updatedAt = ?, blobs = ?, mutationId = ?, origin = ? WHERE key = ?',
-                bindValues: [patch, updatedAt, blobs, mutationId, origin, key],
+                sql: 'UPDATE docs SET body = json_patch(body, ?), rev = rev + 1, updatedAt = ?, blobs = ?, mutationId = ?, overlayId = ?, origin = ? WHERE key = ?',
+                bindValues: [patch, updatedAt, blobs, mutationId, ovl, origin, key],
                 writeTables: new Set(['docs']),
             };
         }
         return {
-            sql: 'UPDATE docs SET body = json_patch(body, ?), rev = rev + 1, updatedAt = ?, mutationId = ?, origin = ? WHERE key = ?',
-            bindValues: [patch, updatedAt, mutationId, origin, key],
+            sql: 'UPDATE docs SET body = json_patch(body, ?), rev = rev + 1, updatedAt = ?, mutationId = ?, overlayId = ?, origin = ? WHERE key = ?',
+            bindValues: [patch, updatedAt, mutationId, ovl, origin, key],
             writeTables: new Set(['docs']),
         };
     },
 
-    'livestruct.v1.DocPathSet': ({ collection, id, path, value, mutationId, origin, updatedAt }) => {
+    'livestruct.v1.DocPathSet': ({ collection, id, path, value, mutationId, overlayId, origin, updatedAt }) => {
         const key = makeDocKey(collection, id);
+        const ovl = overlayId ?? '';
         return {
-            sql: 'UPDATE docs SET body = json_set(body, ?, json(?)), rev = rev + 1, updatedAt = ?, mutationId = ?, origin = ? WHERE key = ?',
-            bindValues: [path, value, updatedAt, mutationId, origin, key],
+            sql: 'UPDATE docs SET body = json_set(body, ?, json(?)), rev = rev + 1, updatedAt = ?, mutationId = ?, overlayId = ?, origin = ? WHERE key = ?',
+            bindValues: [path, value, updatedAt, mutationId, ovl, origin, key],
             writeTables: new Set(['docs']),
         };
     },

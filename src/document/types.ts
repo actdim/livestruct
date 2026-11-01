@@ -21,6 +21,22 @@ export interface Disposable {
 export type PatchPayload<T> = Partial<T> | Record<string, unknown>;
 
 /**
+ * Commit policy for document mutations.
+ * - 'lazy': trailing debounce with max wait commit window (default).
+ * - 'immediate': commits to SQLite immediately.
+ */
+export type CommitPolicy = 'lazy' | 'immediate';
+
+/**
+ * Document and collection-level options for commit scheduling.
+ */
+export interface LiveDocumentOptions {
+    commitPolicy?: CommitPolicy;
+    commitDelayMs?: number;
+    maxCommitWaitMs?: number;
+}
+
+/**
  * High-level LiveDocument contract (RxDB-like ergonomics).
  */
 export interface LiveDocument<T extends object = Record<string, any>> extends Disposable {
@@ -38,7 +54,24 @@ export interface LiveDocument<T extends object = Record<string, any>> extends Di
     readonly $: Observable<Readonly<T>>;
 
     /**
+     * Observable stream emitting deferred commit errors.
+     */
+    readonly errors$: Observable<Error>;
+
+    /**
+     * True when there are local uncommitted pending patches.
+     */
+    readonly isPending: boolean;
+
+    /**
+     * True when viewing uncommitted tentative changes from another context.
+     */
+    readonly isTentative: boolean;
+
+    /**
      * Ergonomic partial mutation using RFC 7396 JSON merge patch.
+     * Updates doc.data, emits on doc.$ and MobX atom immediately.
+     * Returned Promise resolves when committed to SQLite.
      */
     patch(partial: PatchPayload<T>): Promise<void>;
 
@@ -46,6 +79,11 @@ export interface LiveDocument<T extends object = Record<string, any>> extends Di
      * Type-safe property path mutation leveraging lens.
      */
     patchPath<P extends NestedPath<T>>(path: P, value: PathValue<T, P>): Promise<void>;
+
+    /**
+     * Flushes all pending uncommitted patches for this document immediately.
+     */
+    flush(): Promise<void>;
 
     /**
      * Escape hatch to low-level SQLite and event-sourcing operations.
@@ -63,6 +101,11 @@ export interface LiveCollection<T extends object = Record<string, any>> extends 
     delete(id: string): Promise<void>;
     find(predicate?: (item: T) => boolean): Promise<Array<LiveDocument<T>>>;
     readonly query$: Observable<Array<LiveDocument<T>>>;
+
+    /**
+     * Flushes all pending uncommitted patches for documents in this collection.
+     */
+    flush(): Promise<void>;
 }
 
 /**
@@ -77,6 +120,31 @@ export interface LiveStructConfig {
     confirmUnsavedChanges?: boolean;
     worker?: any;
     sharedWorker?: any;
+
+    /**
+     * Global commit policy (default: 'lazy').
+     */
+    commitPolicy?: CommitPolicy;
+
+    /**
+     * Trailing debounce commit delay in milliseconds (default: 150).
+     */
+    commitDelayMs?: number;
+
+    /**
+     * Maximum wait time before forcing a commit in milliseconds (default: 1000).
+     */
+    maxCommitWaitMs?: number;
+
+    /**
+     * Time-to-live for received tentative overlays without updates in ms (default: 1500).
+     */
+    overlayTtlMs?: number;
+
+    /**
+     * Set to true to disable BroadcastChannel tentative overlay sharing.
+     */
+    disableOverlay?: boolean;
 }
 
 /**
@@ -84,7 +152,12 @@ export interface LiveStructConfig {
  */
 export interface LiveStoreInstance {
     readonly engine: LiveSqliteEngine;
-    collection<T extends object = Record<string, any>>(name: string): Promise<LiveCollection<T>>;
+    readonly errors$: Observable<Error>;
+    collection<T extends object = Record<string, any>>(
+        name: string,
+        options?: LiveDocumentOptions
+    ): Promise<LiveCollection<T>>;
+    flush(): Promise<void>;
     close(): Promise<void>;
 }
 

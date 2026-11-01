@@ -6,8 +6,10 @@
 
 import { BehaviorSubject, Observable, Subscription } from 'rxjs';
 import type { LiveEngineAccess, LiveSqliteEngine } from '../engine/index';
-import type { LiveCollection, LiveDocument } from './types';
+import type { LiveCollection, LiveDocument, LiveDocumentOptions } from './types';
 import { LiveDocumentImpl } from './liveDocument';
+import type { CommitScheduler } from './commitScheduler';
+import type { OverlayChannel } from './overlayChannel';
 
 export class LiveCollectionImpl<T extends object = Record<string, any>>
     implements LiveCollection<T>
@@ -15,6 +17,9 @@ export class LiveCollectionImpl<T extends object = Record<string, any>>
     readonly name: string;
     private readonly rawEngine: LiveSqliteEngine;
     private readonly engineAccess: LiveEngineAccess<T>;
+    private readonly commitScheduler?: CommitScheduler;
+    private readonly overlayChannel?: OverlayChannel;
+    private readonly options?: LiveDocumentOptions;
     private readonly documents = new Map<string, LiveDocumentImpl<T>>();
     private readonly querySubject = new BehaviorSubject<Array<LiveDocument<T>>>([]);
     private readonly cdcSubscription: Subscription;
@@ -22,9 +27,18 @@ export class LiveCollectionImpl<T extends object = Record<string, any>>
     private pendingRefresh = false;
     private disposed = false;
 
-    constructor(name: string, rawEngine: LiveSqliteEngine) {
+    constructor(
+        name: string,
+        rawEngine: LiveSqliteEngine,
+        commitScheduler?: CommitScheduler,
+        overlayChannel?: OverlayChannel,
+        options?: LiveDocumentOptions
+    ) {
         this.name = name;
         this.rawEngine = rawEngine;
+        this.commitScheduler = commitScheduler;
+        this.overlayChannel = overlayChannel;
+        this.options = options;
         this.engineAccess = rawEngine.getEngineAccess<T>(name);
 
         this.cdcSubscription = this.engineAccess.cdc$.subscribe((event) => {
@@ -94,7 +108,10 @@ export class LiveCollectionImpl<T extends object = Record<string, any>>
             docRecord.data,
             docRecord.rev,
             this.rawEngine,
-            this.engineAccess
+            this.engineAccess,
+            this.commitScheduler,
+            this.overlayChannel,
+            this.options
         );
         this.documents.set(id, doc);
         return doc;
@@ -112,7 +129,10 @@ export class LiveCollectionImpl<T extends object = Record<string, any>>
             docRecord.data,
             docRecord.rev,
             this.rawEngine,
-            this.engineAccess
+            this.engineAccess,
+            this.commitScheduler,
+            this.overlayChannel,
+            this.options
         );
         this.documents.set(id, doc);
         await this.refreshQuery();
@@ -154,7 +174,10 @@ export class LiveCollectionImpl<T extends object = Record<string, any>>
                     record.data,
                     record.rev,
                     this.rawEngine,
-                    this.engineAccess
+                    this.engineAccess,
+                    this.commitScheduler,
+                    this.overlayChannel,
+                    this.options
                 );
                 this.documents.set(record.id, doc);
             }
@@ -162,6 +185,15 @@ export class LiveCollectionImpl<T extends object = Record<string, any>>
         }
 
         return list;
+    }
+
+    async flush(): Promise<void> {
+        if (this.disposed) {
+            return;
+        }
+        if (this.commitScheduler) {
+            await this.commitScheduler.flushCollection(this.name);
+        }
     }
 
     dispose(): void {

@@ -48,7 +48,9 @@ export function toObservableDocument<T extends object>(
         set(target, prop, value) {
             if (typeof prop === 'string' && !(prop in target)) {
                 // Property mutation triggers document patch asynchronously
-                void target.patch({ [prop]: value } as any);
+                target.patch({ [prop]: value } as any).catch(() => {
+                    // Deferred errors are routed to target.errors$
+                });
                 return true;
             }
             return Reflect.set(target, prop, value);

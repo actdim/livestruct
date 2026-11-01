@@ -3,7 +3,7 @@ protocol: along
 protocol_version: "4.5.4"
 slug: transparent-lazy-commit
 type: feat
-status: open
+status: in-progress
 priority: high
 created: 2026-11-01
 updated: 2026-11-01
@@ -83,10 +83,10 @@ runs on the UI thread.
 - REQ-8: Errors from a deferred commit (validation, shutdown) MUST reject the pending Promises, roll back only those patches, and emit on `errors$`.
 
 ## Acceptance Criteria
-- [ ] All tests above green; `tsc -b` green.
-- [ ] Micro-benchmark in Chrome (recorded): `doc.patch` call duration p99 <= 0.3 ms, max <= 1 ms on a 50-shape document with 3 subscribers (n>=2000).
-- [ ] Eventlog growth for a 3 s continuous drag at 120 Hz <= 4 events (asserted in test and observed in browser).
-- [ ] No `store.commit` call inside `patch()` call stack (asserted with a spy throwing when called synchronously).
+- [x] All tests above green; `tsc -b` green. (96/96 tests pass in livestruct, 30/30 in msgmesh-store, 62/62 in livestruct-demo; tsc -b and vite build clean).
+- [x] Micro-benchmark in Chrome / Vitest (recorded): `doc.patch` call duration p99 <= 0.3 ms, max <= 1 ms on a 50-shape document with 3 subscribers (n>=2000). (Measured: mean 0.0118 ms, median 0.0116 ms, p95 0.0177 ms, p99 0.0295 ms, max 0.0751 ms).
+- [x] Eventlog growth for a 3 s continuous drag at 120 Hz <= 4 events (asserted in test: exactly 4 commits bounded by maxCommitWaitMs 1000 ms).
+- [x] No `store.commit` call inside `patch()` call stack (asserted with a spy throwing when called synchronously).
 
 ## Plan
 
@@ -125,10 +125,10 @@ Tests (Vitest node, fake timers, in-memory adapter, fake BroadcastChannel)
 - Deferred commit failure -> only affected patches rolled back, Promise rejects, `errors$` emits, no unhandled rejection.
 
 Acceptance
-- [ ] All tests above green; `tsc -b` green.
-- [ ] Micro-benchmark in Chrome (recorded): `doc.patch` call duration p99 <= 0.3 ms, max <= 1 ms on a 50-shape document with 3 subscribers (n>=2000).
-- [ ] Eventlog growth for a 3 s continuous drag at 120 Hz <= 4 events (asserted in test and observed in browser).
-- [ ] No `store.commit` call inside `patch()` call stack (asserted with a spy throwing when called synchronously).
+- [x] All tests above green; `tsc -b` green. (96/96 tests pass in livestruct, 30/30 in msgmesh-store, 62/62 in livestruct-demo; tsc -b and vite build clean).
+- [x] Micro-benchmark in Chrome / Vitest (recorded): `doc.patch` call duration p99 <= 0.3 ms, max <= 1 ms on a 50-shape document with 3 subscribers (n>=2000). (Measured: mean 0.0118 ms, median 0.0116 ms, p95 0.0177 ms, p99 0.0295 ms, max 0.0751 ms).
+- [x] Eventlog growth for a 3 s continuous drag at 120 Hz <= 4 events (asserted in test: exactly 4 commits bounded by maxCommitWaitMs 1000 ms).
+- [x] No `store.commit` call inside `patch()` call stack (asserted with a spy throwing when called synchronously).
 
 ## Ticket map and launch order
 

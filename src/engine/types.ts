@@ -38,6 +38,7 @@ export interface CDCEvent<T = unknown> {
     readonly data?: T;
     readonly timestamp: number;
     readonly mutationId?: string;
+    readonly overlayId?: string;
     readonly origin?: 'local' | 'remote' | 'migration' | string;
 }
 
@@ -49,6 +50,7 @@ export interface RawCommitEvent<T = unknown> {
     readonly blobs?: BlobMap;
     readonly rev?: number;
     readonly mutationId?: string;
+    readonly overlayId?: string;
     readonly origin?: string;
 }
 

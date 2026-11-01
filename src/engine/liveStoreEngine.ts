@@ -138,6 +138,7 @@ export class LiveDocEngine {
                             data,
                             timestamp: row.updatedAt,
                             mutationId: row.mutationId,
+                            overlayId: row.overlayId || row.mutationId,
                             origin: 'remote',
                         });
                     } catch {
@@ -158,6 +159,7 @@ export class LiveDocEngine {
                             data,
                             timestamp: row.updatedAt,
                             mutationId: row.mutationId,
+                            overlayId: row.overlayId || row.mutationId,
                             origin: 'remote',
                         });
                     } catch {
@@ -418,6 +420,7 @@ export class LiveDocEngine {
                 patch: JSON.stringify(patch),
                 blobs: blobHashesString,
                 mutationId: mutId,
+                overlayId: mutId,
                 origin: 'local',
                 updatedAt: now,
             })
@@ -433,10 +436,130 @@ export class LiveDocEngine {
             data: patchedData,
             timestamp: now,
             mutationId: hasExplicitMutationId ? mutId : undefined,
+            overlayId: hasExplicitMutationId ? mutId : undefined,
             origin: 'local',
         });
 
         return doc;
+    }
+
+    /**
+     * Emits a CDC event directly on the engine CDC subject.
+     */
+    emitCDC(event: CDCEvent<any>): void {
+        this.cdcSubject.next(event);
+    }
+
+    /**
+     * Commits a batch of RFC 7396 merge patches in a single atomic SQLite commit.
+     */
+    async commitBatchedPatches(
+        entries: Array<{
+            collection: string;
+            id: string;
+            patch: Record<string, unknown>;
+            blobs?: BlobMap;
+            mutationId?: string;
+            overlayId?: string;
+            emitCDC?: boolean;
+        }>
+    ): Promise<Array<DocumentRecord<any>>> {
+        this.assertNotClosed();
+        if (entries.length === 0) {
+            return [];
+        }
+
+        const now = Date.now();
+        const results: Array<DocumentRecord<any>> = [];
+        const commitEvents: any[] = [];
+        const cdcToEmit: Array<CDCEvent<any>> = [];
+
+        for (const entry of entries) {
+            const { collection, id, patch, blobs, mutationId, overlayId, emitCDC } = entry;
+            const key = makeDocKey(collection, id);
+
+            const rows = this.store.query({
+                query: 'SELECT rev, body, blobs FROM docs WHERE key = ?',
+                bindValues: [key],
+            });
+            if (!rows || rows.length === 0) {
+                throw new Error(`Document with id '${id}' not found in collection '${collection}'.`);
+            }
+
+            const existingRow = rows[0];
+            const existingData = JSON.parse(existingRow.body);
+            const patchedData = jsonMergePatch<any>(existingData, patch);
+            const rev = existingRow.rev + 1;
+            const mutId = mutationId || overlayId || `mut_${id}_${now}_${Math.random().toString(36).slice(2, 7)}`;
+            this.localMutationIds.add(mutId);
+
+            let blobHashesString: string | undefined;
+            if (blobs) {
+                const blobHashes: Record<string, string> = {};
+                if (existingRow.blobs && existingRow.blobs !== '{}') {
+                    try {
+                        Object.assign(blobHashes, JSON.parse(existingRow.blobs));
+                    } catch {
+                        // Ignore
+                    }
+                }
+                for (const [bName, bData] of Object.entries(blobs)) {
+                    if (bData) {
+                        blobHashes[bName] = await this.blobStore.put(bData);
+                    }
+                }
+                blobHashesString = JSON.stringify(blobHashes);
+            }
+
+            const doc: DocumentRecord<any> = {
+                collection,
+                id,
+                rev,
+                data: patchedData,
+                blobs: blobs ? { ...blobs } : {},
+                updatedAt: now,
+            };
+
+            this.localKnownDocs.set(key, { rev, data: patchedData, blobs: doc.blobs });
+            results.push(doc);
+
+            commitEvents.push(
+                events.DocPatched({
+                    collection,
+                    id,
+                    patch: JSON.stringify(patch),
+                    blobs: blobHashesString,
+                    mutationId: mutId,
+                    overlayId: overlayId ?? mutId,
+                    origin: 'local',
+                    updatedAt: now,
+                })
+            );
+
+            if (emitCDC) {
+                cdcToEmit.push({
+                    type: 'update',
+                    kind: 'update',
+                    collection,
+                    id,
+                    rev,
+                    delta: patch,
+                    data: patchedData,
+                    timestamp: now,
+                    mutationId: mutId,
+                    overlayId: overlayId ?? mutId,
+                    origin: 'local',
+                });
+            }
+        }
+
+        this.store.commit(...commitEvents);
+
+        for (const cdc of cdcToEmit) {
+            this.cdcSubject.next(cdc);
+        }
+
+        return results;
     }
 
     /**
@@ -583,6 +706,7 @@ export class LiveDocEngine {
                     id: string;
                     delta: Partial<T>;
                     mutationId?: string;
+                    overlayId?: string;
                 } = {
                     type: event.type,
                     id: event.id,
@@ -590,6 +714,9 @@ export class LiveDocEngine {
                 };
                 if (event.mutationId !== undefined) {
                     res.mutationId = event.mutationId;
+                }
+                if (event.overlayId !== undefined) {
+                    res.overlayId = event.overlayId;
                 }
                 return res;
             })

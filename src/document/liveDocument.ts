@@ -1,33 +1,47 @@
 /**
  * @actdim/livestruct - LiveDocument Implementation
- * Reactive document with optimistic updates, echo suppression, MobX atom integration,
- * RFC 7396 merge patch, type-safe path mutations, and low-level engine escape hatch.
+ * Reactive document with instant local mutation, RFC 7396 merge patch,
+ * transparent lazy commits, live tentative overlays, MobX atom integration,
+ * remote change rebasing, and low-level engine escape hatch.
  */
 
-import { BehaviorSubject, Observable, Subscription } from 'rxjs';
+import { BehaviorSubject, Subject, Observable, Subscription } from 'rxjs';
 import { filter } from 'rxjs/operators';
 import { createAtom, type IAtom } from 'mobx';
 import type { LiveEngineAccess, LiveSqliteEngine } from '../engine/index';
-import { jsonMergePatch } from '../engine/patch';
+import type { CDCEvent } from '../engine/types';
+import { jsonMergePatch, mergePatches } from '../engine/patch';
 import type { NestedPath, PathValue } from '../lens/index';
-import type { LiveDocument, PatchPayload } from './types';
+import type { LiveDocument, LiveDocumentOptions, PatchPayload } from './types';
 import { buildPathPatch } from './patchHelper';
+import { deepEquals } from './equal';
+import { CommitScheduler, type CommitSchedulerDocumentTarget } from './commitScheduler';
+import type { OverlayChannel, OverlayDocumentTarget } from './overlayChannel';
 
 export class LiveDocumentImpl<T extends object = Record<string, any>>
-    implements LiveDocument<T>
+    implements LiveDocument<T>, CommitSchedulerDocumentTarget, OverlayDocumentTarget
 {
     readonly id: string;
     readonly collectionName: string;
     readonly engine: LiveEngineAccess<T>;
 
     private readonly rawEngine: LiveSqliteEngine;
-    private currentData: T;
-    private currentRev: number;
+    private readonly commitScheduler: CommitScheduler;
+    private readonly overlayChannel?: OverlayChannel;
+    private readonly options?: LiveDocumentOptions;
+
+    private committedData: Readonly<T>;
     private committedRev: number;
+    private localPendingPatch: Record<string, unknown> | null = null;
+    private remoteTentativePatch: Record<string, unknown> | null = null;
+    private remoteOverlayId: string | null = null;
+    private readonly pendingOverlayIds = new Set<string>();
+
+    private currentData: Readonly<T>;
+    private currentRev: number;
     private readonly stateSubject: BehaviorSubject<Readonly<T>>;
+    private readonly errorSubject = new Subject<Error>();
     private readonly cdcSubscription: Subscription;
-    private readonly pendingMutationIds = new Set<string>();
-    private mutationCounter = 0;
     private readonly atom: IAtom;
     private disposed = false;
 
@@ -37,15 +51,24 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
         initialData: T,
         initialRev: number,
         rawEngine: LiveSqliteEngine,
-        engineAccess: LiveEngineAccess<T>
+        engineAccess: LiveEngineAccess<T>,
+        commitScheduler?: CommitScheduler,
+        overlayChannel?: OverlayChannel,
+        options?: LiveDocumentOptions
     ) {
         this.collectionName = collectionName;
         this.id = id;
         this.rawEngine = rawEngine;
         this.engine = engineAccess;
-        this.currentRev = initialRev;
         this.committedRev = initialRev;
-        this.currentData = Object.freeze(jsonMergePatch<T>({}, initialData)) as unknown as T;
+        this.currentRev = initialRev;
+        this.options = options;
+
+        this.commitScheduler = commitScheduler ?? new CommitScheduler(rawEngine as any);
+        this.overlayChannel = overlayChannel;
+
+        this.committedData = Object.freeze(jsonMergePatch<T>({}, initialData)) as unknown as T;
+        this.currentData = this.committedData;
         this.stateSubject = new BehaviorSubject<Readonly<T>>(this.currentData);
 
         this.atom = createAtom(
@@ -54,27 +77,26 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
             () => {}
         );
 
-        // Subscribe to CDC stream with echo suppression and external change merging
+        this.commitScheduler.registerDocument(this.collectionName, this.id, this);
+        if (this.overlayChannel) {
+            this.overlayChannel.registerDocument(this.collectionName, this.id, this);
+        }
+
+        // Subscribe to CDC stream with remote rebase and echo suppression
         this.cdcSubscription = this.engine.cdc$
             .pipe(filter((event) => event.id === this.id))
             .subscribe((event) => {
-                this.handleCDCEvent(event);
+                this.handleCDCEvent(event as CDCEvent<T>);
             });
     }
 
-    private handleCDCEvent(event: {
-        type: 'insert' | 'update' | 'delete';
-        id: string;
-        delta: Partial<T>;
-        mutationId?: string;
-    }): void {
+    private handleCDCEvent(event: CDCEvent<T>): void {
         if (this.disposed) {
             return;
         }
 
-        // Echo suppression: if event carries our pending mutation ID, suppress duplicate emission
-        if (event.mutationId && this.pendingMutationIds.has(event.mutationId)) {
-            this.pendingMutationIds.delete(event.mutationId);
+        // Suppress our own pending local mutations/echoes
+        if (event.mutationId && this.pendingOverlayIds.has(event.mutationId)) {
             return;
         }
 
@@ -84,25 +106,50 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
         }
 
         if (event.type === 'update' || event.type === 'insert') {
-            if (this.pendingMutationIds.size > 0) {
-                // In-flight local mutations exist: merge external delta into current data without wiping uncommitted fields
-                const merged = jsonMergePatch<T>(this.currentData, event.delta);
-                this.currentData = Object.freeze(merged) as unknown as T;
+            // Drop matching tentative overlay if commit arrived
+            if (event.overlayId) {
+                this.overlayChannel?.dropOverlay(this.collectionName, this.id, event.overlayId);
+                if (this.remoteOverlayId === event.overlayId) {
+                    this.remoteTentativePatch = null;
+                    this.remoteOverlayId = null;
+                }
+            }
+
+            const delta = (event.delta || event.data) as Partial<T>;
+            if (event.type === 'insert') {
+                this.committedData = Object.freeze(jsonMergePatch<T>({}, delta)) as unknown as T;
+            } else {
+                this.committedData = Object.freeze(jsonMergePatch<T>(this.committedData, delta)) as unknown as T;
+            }
+
+            if (event.rev !== undefined && event.rev > this.committedRev) {
+                this.committedRev = event.rev;
+            } else {
+                this.committedRev++;
+            }
+
+            // REBASE (REQ-5):
+            // view = remoteCommitted with local pending patches re-applied on top.
+            // Subscribers notified only when the view changes (structural equality).
+            this.recomputeView(true);
+        }
+    }
+
+    private recomputeView(notifyIfChanged: boolean): void {
+        let nextData: T;
+        if (this.localPendingPatch !== null) {
+            nextData = jsonMergePatch<T>(this.committedData, this.localPendingPatch);
+        } else if (this.remoteTentativePatch !== null) {
+            nextData = jsonMergePatch<T>(this.committedData, this.remoteTentativePatch);
+        } else {
+            nextData = this.committedData as unknown as T;
+        }
+
+        if (!deepEquals(this.currentData, nextData)) {
+            this.currentData = Object.freeze(nextData) as unknown as T;
+            if (notifyIfChanged) {
                 this.stateSubject.next(this.currentData);
                 this.atom.reportChanged();
-            } else {
-                // No in-flight local mutations: fetch latest authoritative snapshot from engine
-                this.rawEngine.getDoc<T>(this.collectionName, this.id).then((doc) => {
-                    if (doc && !this.disposed) {
-                        if (doc.rev > this.committedRev) {
-                            this.committedRev = doc.rev;
-                            this.currentRev = doc.rev;
-                            this.currentData = Object.freeze(doc.data) as unknown as T;
-                            this.stateSubject.next(this.currentData);
-                            this.atom.reportChanged();
-                        }
-                    }
-                });
             }
         }
     }
@@ -116,8 +163,20 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
         return this.stateSubject.asObservable();
     }
 
+    get errors$(): Observable<Error> {
+        return this.errorSubject.asObservable();
+    }
+
     get isDisposed(): boolean {
         return this.disposed;
+    }
+
+    get isPending(): boolean {
+        return this.localPendingPatch !== null;
+    }
+
+    get isTentative(): boolean {
+        return this.remoteTentativePatch !== null && this.localPendingPatch === null;
     }
 
     async patch(partial: PatchPayload<T>): Promise<void> {
@@ -125,39 +184,63 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
             throw new Error(`Cannot patch disposed LiveDocument '${this.id}'.`);
         }
 
-        const mutationId = `mut_${this.id}_${Date.now()}_${++this.mutationCounter}`;
-        this.pendingMutationIds.add(mutationId);
+        const patchRecord = partial as Record<string, unknown>;
 
-        // Optimistic local update
-        const previousData = this.currentData;
-        const previousRev = this.currentRev;
-        const optimisticData = Object.freeze(jsonMergePatch<T>(this.currentData, partial)) as unknown as T;
+        // 1. Update local pending patch
+        if (this.localPendingPatch === null) {
+            this.localPendingPatch = mergePatches({}, patchRecord);
+        } else {
+            this.localPendingPatch = mergePatches(this.localPendingPatch, patchRecord);
+        }
 
-        this.currentData = optimisticData;
-        this.currentRev = this.currentRev + 1;
+        // Local edits supersede any remote tentative overlay
+        this.remoteTentativePatch = null;
+        this.remoteOverlayId = null;
+
+        // 2. Optimistic local update: instant data update, emit on $ and MobX atom
+        this.currentRev++;
+        const nextData = Object.freeze(jsonMergePatch<T>(this.committedData, this.localPendingPatch)) as unknown as T;
+        this.currentData = nextData;
         this.stateSubject.next(this.currentData);
         this.atom.reportChanged();
 
-        try {
-            const updated = await this.rawEngine.patchDoc<T>(
+        // 3. Queue deferred commit with CommitScheduler
+        const { promise, overlayId } = this.commitScheduler.schedulePatch(
+            this.collectionName,
+            this.id,
+            patchRecord,
+            undefined,
+            this.options
+        );
+        this.pendingOverlayIds.add(overlayId);
+
+        // 4. Emit local CDC immediately without waiting for commit
+        this.rawEngine.emitCDC({
+            type: 'update',
+            kind: 'update',
+            collection: this.collectionName,
+            id: this.id,
+            rev: this.currentRev,
+            delta: partial as Partial<T>,
+            data: this.currentData,
+            timestamp: Date.now(),
+            mutationId: overlayId,
+            overlayId,
+            origin: 'local',
+        });
+
+        // 5. Broadcast tentative overlay to other same-origin contexts (frame throttled)
+        if (this.overlayChannel && !this.disposed) {
+            this.overlayChannel.sendTentative(
                 this.collectionName,
                 this.id,
-                partial,
-                undefined,
-                mutationId
+                this.localPendingPatch,
+                overlayId
             );
-            this.committedRev = updated.rev;
-            // Clean up mutation ID if CDC event arrived or if it was already processed
-            this.pendingMutationIds.delete(mutationId);
-        } catch (err) {
-            // Rollback optimistic update on failure
-            this.pendingMutationIds.delete(mutationId);
-            this.currentData = previousData;
-            this.currentRev = previousRev;
-            this.stateSubject.next(this.currentData);
-            this.atom.reportChanged();
-            throw err;
         }
+
+        // 6. Return commit Promise (resolves when committed to SQLite)
+        return promise;
     }
 
     async patchPath<P extends NestedPath<T>>(path: P, value: PathValue<T, P>): Promise<void> {
@@ -165,7 +248,81 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
             throw new Error(`Cannot patch disposed LiveDocument '${this.id}'.`);
         }
         const patch = buildPathPatch(this.currentData, path, value);
-        await this.patch(patch as PatchPayload<T>);
+        return this.patch(patch as PatchPayload<T>);
+    }
+
+    async flush(): Promise<void> {
+        if (this.disposed) {
+            return;
+        }
+        await this.commitScheduler.flushDoc(this.collectionName, this.id);
+    }
+
+    onCommitSuccess(
+        newRev: number,
+        committedData: any,
+        overlayId: string,
+        committedPatch: Record<string, unknown>
+    ): void {
+        if (this.disposed) {
+            return;
+        }
+
+        this.pendingOverlayIds.delete(overlayId);
+        this.committedRev = newRev;
+        this.committedData = Object.freeze(committedData) as unknown as T;
+
+        if (this.commitScheduler.hasPending(this.collectionName, this.id)) {
+            this.localPendingPatch = this.commitScheduler.getPendingPatch(this.collectionName, this.id);
+        } else {
+            this.localPendingPatch = null;
+        }
+
+        this.recomputeView(true);
+    }
+
+    onCommitError(failedPatch: Record<string, unknown>, err: unknown): void {
+        if (this.disposed) {
+            return;
+        }
+
+        if (this.commitScheduler.hasPending(this.collectionName, this.id)) {
+            this.localPendingPatch = this.commitScheduler.getPendingPatch(this.collectionName, this.id);
+        } else {
+            this.localPendingPatch = null;
+        }
+
+        this.recomputeView(true);
+
+        const errorObj = err instanceof Error ? err : new Error(String(err));
+        this.errorSubject.next(errorObj);
+    }
+
+    applyRemoteOverlay(patch: Record<string, unknown>, overlayId: string): void {
+        if (this.disposed) {
+            return;
+        }
+
+        // Local pending edits always take priority over remote tentative values
+        if (this.localPendingPatch !== null) {
+            return;
+        }
+
+        this.remoteTentativePatch = patch;
+        this.remoteOverlayId = overlayId;
+        this.recomputeView(true);
+    }
+
+    clearRemoteOverlay(overlayId: string): void {
+        if (this.disposed) {
+            return;
+        }
+
+        if (this.remoteOverlayId === overlayId) {
+            this.remoteTentativePatch = null;
+            this.remoteOverlayId = null;
+            this.recomputeView(true);
+        }
     }
 
     dispose(): void {
@@ -174,7 +331,11 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
         }
         this.disposed = true;
         this.cdcSubscription.unsubscribe();
-        this.pendingMutationIds.clear();
+        this.commitScheduler.unregisterDocument(this.collectionName, this.id);
+        if (this.overlayChannel) {
+            this.overlayChannel.unregisterDocument(this.collectionName, this.id);
+        }
         this.stateSubject.complete();
+        this.errorSubject.complete();
     }
 }
