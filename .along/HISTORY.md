@@ -6,3 +6,4 @@ _`<YYYY-MM-DD> - <slug> - <agent> - <summary> - <relative link>`_
 2026-11-01 - livestore-engine - antigravity - LiveStore-backed engine: OPFS leader worker, built-in schema, compatible API - [Session Log](./SESSIONS/2026/2026-11-01--livestore-engine.md)
 2026-11-01 - transparent-lazy-commit - antigravity - Transparent lazy commits and live overlays: patch like a plain object - [Session Log](./SESSIONS/2026/2026-11-01--transparent-lazy-commit.md)
 2026-11-01 - engine-correctness-batch - antigravity - API-layer correctness batch: instance races, unhandled rejections, patchPath, replace, cloning - [Session Log](./SESSIONS/2026/2026-11-01--engine-correctness-batch.md)
+2026-11-01 - test-coverage-and-naming - antigravity - Browser integration tests, no fixed sleeps, deprecated aliases, strict types - [Session Log](./SESSIONS/2026/2026-11-01--test-coverage-and-naming.md)
