@@ -4,7 +4,10 @@
 <!-- No active issues -->
 
 ## Backlog
-<!-- No backlog issues -->
+- [ ] `(bug)` [cdc-event-fields-dropped](ISSUES/bug--cdc-event-fields-dropped.md)
+- [ ] `(bug)` [missing-core-mesh-exports](ISSUES/bug--missing-core-mesh-exports.md)
+- [ ] `(debt)` [replace-commit-path-consistency](ISSUES/debt--replace-commit-path-consistency.md)
+- [ ] `(docs)` [readme-claims-mismatch](ISSUES/docs--readme-claims-mismatch.md)
 
 ## Done (recent)
 - [x] `(spike)` [livestore-integration](ISSUES/done/spike--livestore-integration.md)
