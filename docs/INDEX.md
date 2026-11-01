@@ -19,7 +19,7 @@ flowchart TD
     INDEX["Knowledge Base (INDEX)"]
     T_ALONG_PROTOCOL["Along Protocol Reference"]
     INDEX --> T_ALONG_PROTOCOL
-    T_ARCHITECTURE["System Architecture & Flow"]
+    T_ARCHITECTURE["LiveStruct Architecture & Engine Design"]
     INDEX --> T_ARCHITECTURE
     T_DOMAIN_MODEL["Domain Model & Entity Ecosystem"]
     INDEX --> T_DOMAIN_MODEL
@@ -34,7 +34,7 @@ flowchart TD
 ## Articles
 
 - **[Along Protocol Reference](./topic--along-protocol.md)** (reference) `protocol`, `agents-md`, `checklist`, `routing`, `concurrency`, `along-team`, `conventions`
-- **[System Architecture & Flow](./topic--architecture.md)** (architecture) `architecture`, `boundaries`, `providers`, `mcp`, `dashboard`
+- **[LiveStruct Architecture & Engine Design](./topic--architecture.md)** (architecture) `architecture`, `livestore`, `opfs`, `worker`, `schema`, `blobs`
 - **[Domain Model & Entity Ecosystem](./topic--domain-model.md)** (domain-model) `domain-model`, `entities`, `schemas`, `dag`, `metadata`
 - **[LiveStore 0.5.0 Integration & Architectural Spike](./topic--livestore-integration.md)** (topic) `livestore-integration`
 - **[Setup, Installation & Agent Workflows](./topic--setup-and-workflow.md)** (setup-workflow) `setup`, `workflow`, `installation`, `lifecycle`, `quality-gates`
