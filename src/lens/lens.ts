@@ -17,12 +17,12 @@ export function getNestedPath<T, P extends NestedPath<T>>(obj: T, path: P): Path
         return undefined;
     }
     const segments = path.split('.');
-    let current: any = obj;
+    let current: unknown = obj;
     for (const segment of segments) {
-        if (current === null || current === undefined) {
+        if (current === null || current === undefined || typeof current !== 'object') {
             return undefined;
         }
-        current = current[segment];
+        current = (current as Record<string, unknown>)[segment];
     }
     return current as PathValue<T, P>;
 }
@@ -39,7 +39,7 @@ export function hasNestedPath<T>(obj: T, path: string): boolean {
         return false;
     }
     const segments = path.split('.');
-    let current: any = obj;
+    let current: unknown = obj;
     for (let i = 0; i < segments.length; i++) {
         if (current === null || current === undefined || typeof current !== 'object') {
             return false;
@@ -55,13 +55,13 @@ export function hasNestedPath<T>(obj: T, path: string): boolean {
             if (!Object.prototype.hasOwnProperty.call(current, segment)) {
                 return false;
             }
-            current = current[segment];
+            current = (current as Record<string, unknown>)[segment];
         }
     }
     return true;
 }
 
-function setIn(target: any, segments: string[], value: any): any {
+function setIn(target: unknown, segments: string[], value: unknown): unknown {
     if (segments.length === 0) {
         return value;
     }
@@ -86,7 +86,7 @@ function setIn(target: any, segments: string[], value: any): any {
         }
         return container;
     } else if (target !== null && typeof target === 'object') {
-        const container = { ...target };
+        const container: Record<string, unknown> = { ...(target as Record<string, unknown>) };
         if (tail.length === 0) {
             container[head] = value;
         } else {
@@ -104,11 +104,11 @@ function setIn(target: any, segments: string[], value: any): any {
         return container;
     } else {
         const isArray = /^\d+$/.test(head);
-        const container: any = isArray ? [] : {};
+        const container: Record<string, unknown> | unknown[] = isArray ? [] : {};
         if (tail.length === 0) {
-            container[head] = value;
+            (container as Record<string, unknown>)[head] = value;
         } else {
-            container[head] = setIn(/^\d+$/.test(tail[0]) ? [] : {}, tail, value);
+            (container as Record<string, unknown>)[head] = setIn(/^\d+$/.test(tail[0]) ? [] : {}, tail, value);
         }
         return container;
     }
@@ -131,7 +131,7 @@ export function setNestedPath<T, P extends NestedPath<T>>(obj: T, path: P, value
     return setIn(obj, segments, value) as T;
 }
 
-function deleteIn(target: any, segments: string[]): any {
+function deleteIn(target: unknown, segments: string[]): unknown {
     if (target === null || target === undefined || typeof target !== 'object' || segments.length === 0) {
         return target;
     }
@@ -151,7 +151,7 @@ function deleteIn(target: any, segments: string[]): any {
         }
         return container;
     } else {
-        const container = { ...target };
+        const container: Record<string, unknown> = { ...(target as Record<string, unknown>) };
         if (tail.length === 0) {
             delete container[head];
             return container;
@@ -179,7 +179,7 @@ export function deleteNestedPath<T, P extends NestedPath<T>>(obj: T, path: P): T
     return deleteIn(obj, segments) as T;
 }
 
-export interface LensDocumentTarget<T extends object = Record<string, any>> {
+export interface LensDocumentTarget<T extends object = Record<string, unknown>> {
     readonly data: Readonly<T>;
     patchPath<P extends NestedPath<T>>(path: P, value: PathValue<T, P>): Promise<void>;
 }
@@ -196,7 +196,7 @@ export function createDocLens<T extends object, P extends NestedPath<T>>(
     return {
         path,
         get(): PathValue<T, P> | undefined {
-            return getNestedPath(doc.data, path);
+            return getNestedPath(doc.data as T, path);
         },
         async set(value: PathValue<T, P>): Promise<void> {
             return doc.patchPath(path, value);

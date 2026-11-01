@@ -4,7 +4,7 @@
  */
 
 import type { Observable } from 'rxjs';
-import type { LiveEngineAccess, LiveSqliteEngine } from '../engine/index';
+import type { LiveEngineAccess, LiveDocEngine, LiveSqliteEngine } from '../engine/index';
 import type { NestedPath, PathValue } from '../lens/index';
 export * from './errors';
 
@@ -18,8 +18,15 @@ export interface Disposable {
 
 /**
  * Partial update payload for RFC 7396 merge patch mutations.
+ * Recursively strictly-typed for object properties; arrays are replaced whole.
  */
-export type PatchPayload<T> = Partial<T> | Record<string, unknown>;
+export type PatchPayload<T> = {
+    [K in keyof T]?: T[K] extends (infer U)[]
+        ? U[]
+        : T[K] extends object
+          ? PatchPayload<T[K]> | null
+          : T[K] | null;
+};
 
 /**
  * Commit policy for document mutations.
@@ -65,7 +72,7 @@ export interface LiveDocumentOptions {
 /**
  * High-level LiveDocument contract (RxDB-like ergonomics).
  */
-export interface LiveDocument<T extends object = Record<string, any>> extends Disposable {
+export interface LiveDocument<T extends object = Record<string, unknown>> extends Disposable {
     readonly id: string;
     readonly collectionName: string;
 
@@ -107,6 +114,11 @@ export interface LiveDocument<T extends object = Record<string, any>> extends Di
     patch(partial: PatchPayload<T>): Promise<void>;
 
     /**
+     * Escape hatch for untyped or dynamic partial patch payloads.
+     */
+    patchUnchecked(patch: Record<string, unknown>): Promise<void>;
+
+    /**
      * Type-safe property path mutation leveraging lens.
      */
     patchPath<P extends NestedPath<T>>(path: P, value: PathValue<T, P>): Promise<void>;
@@ -133,9 +145,14 @@ export interface LiveDocument<T extends object = Record<string, any>> extends Di
 }
 
 /**
+ * Alias contract for LiveDocument interface.
+ */
+export type ILiveDocument<T extends object = Record<string, unknown>> = LiveDocument<T>;
+
+/**
  * High-level LiveCollection contract managing document instances and reactive queries.
  */
-export interface LiveCollection<T extends object = Record<string, any>> extends Disposable {
+export interface LiveCollection<T extends object = Record<string, unknown>> extends Disposable {
     readonly name: string;
     readonly subscriptionCount: number;
     get(id: string): Promise<LiveDocument<T> | null>;
@@ -161,8 +178,8 @@ export interface LiveStructConfig {
     sessionId?: string;
     disableDevtools?: boolean;
     confirmUnsavedChanges?: boolean;
-    worker?: any;
-    sharedWorker?: any;
+    worker?: unknown;
+    sharedWorker?: unknown;
 
     /**
      * Global commit policy (default: 'lazy').
@@ -194,10 +211,11 @@ export interface LiveStructConfig {
  * High-level store instance providing collections and low-level engine.
  */
 export interface LiveStoreInstance {
-    readonly engine: LiveSqliteEngine;
+    readonly engine: LiveDocEngine;
+    readonly storageMode: string;
     readonly errors$: Observable<Error>;
     readonly events$: Observable<LiveStructEvent>;
-    collection<T extends object = Record<string, any>>(
+    collection<T extends object = Record<string, unknown>>(
         name: string,
         options?: LiveDocumentOptions
     ): Promise<LiveCollection<T>>;
@@ -208,4 +226,4 @@ export interface LiveStoreInstance {
 /**
  * MobX-observable wrapper type for LiveDocument.
  */
-export type ObservableLiveDocument<T extends object = Record<string, any>> = LiveDocument<T> & T;
+export type ObservableLiveDocument<T extends object = Record<string, unknown>> = LiveDocument<T> & T;

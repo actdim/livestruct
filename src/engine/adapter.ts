@@ -10,10 +10,11 @@ import {
     makePersistedAdapter,
     makeSingleTabAdapter,
 } from '@livestore/adapter-web';
+import type { Adapter } from '@livestore/livestore';
 import type { EngineConfig } from './types';
 
 export interface ResolvedLiveStoreConfig {
-    readonly adapter: any;
+    readonly adapter: Adapter;
     readonly sessionId: string;
     readonly storageMode: 'persisted' | 'single-tab' | 'in-memory';
 }
@@ -57,8 +58,8 @@ export function resolveLiveStoreAdapter(config: EngineConfig): ResolvedLiveStore
         if (hasSharedWorker && config.worker && config.sharedWorker) {
             const adapter = makePersistedAdapter({
                 storage: { type: 'opfs' },
-                worker: config.worker,
-                sharedWorker: config.sharedWorker,
+                worker: config.worker as never,
+                sharedWorker: config.sharedWorker as never,
                 sessionId,
             });
             return {
@@ -71,7 +72,7 @@ export function resolveLiveStoreAdapter(config: EngineConfig): ResolvedLiveStore
         if (config.worker) {
             const adapter = makeSingleTabAdapter({
                 storage: { type: 'opfs' },
-                worker: config.worker,
+                worker: config.worker as never,
                 sessionId,
             });
             return {

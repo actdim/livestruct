@@ -4,6 +4,18 @@ All notable changes to `@actdim/livestruct` are documented here. Format: [Keep a
 
 ## [Unreleased]
 
+### Added
+- Browser integration test suite with Playwright Chromium (`test:browser`) covering OPFS boot, cross-context replication, ephemeral overlay streaming (`isTentative`), and reload persistence (`debt--test-coverage-and-naming`, REQ-2).
+- Reactive `nextEmission(obs$, predicate, timeoutMs)` test helper to eliminate fixed sleep timeouts in test assertions (`debt--test-coverage-and-naming`, REQ-1).
+- `storageMode` getter on `LiveStoreInstance` reflecting underlying engine adapter mode (`persisted`, `single-tab`, or `in-memory`).
+- `patchUnchecked(patch)` escape hatch on `LiveDocument` and `ILiveDocument` for unstructured or untyped patch records (`debt--test-coverage-and-naming`, REQ-4).
+- Type assertion tests for `@deprecated` aliases in `tests/types/deprecated.test-d.ts` (`debt--test-coverage-and-naming`, REQ-3).
+
+### Changed
+- Preserved `LiveSqliteEngine` alias marked with `@deprecated use LiveDocEngine` in `src/engine/` and `src/index.ts` (`debt--test-coverage-and-naming`, REQ-3).
+- Strict recursive `PatchPayload<T>` type definition replacing loose partial schemas while handling arrays as whole units (`debt--test-coverage-and-naming`, REQ-4).
+- Zero `any` policy enforced across `src/` via ESLint `@typescript-eslint/no-explicit-any: error` (`debt--test-coverage-and-naming`, REQ-4).
+
 ### Fixed
 - LiveCollection instance identity deduplication under concurrent loads: concurrent calls to `collection.get(id)` return the identical `LiveDocument` instance and deduplicate in-flight queries (`bug--engine-correctness-batch`, REQ-1).
 - Unhandled Promise rejections eliminated across all async paths; background timer, window event, and observable setter rejections route safely to `errors$` via `reportAsync` (`bug--engine-correctness-batch`, REQ-2).

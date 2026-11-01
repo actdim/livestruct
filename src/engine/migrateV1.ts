@@ -12,7 +12,7 @@ import { events } from './schema';
 
 export async function migrateLegacyV1(
     config: EngineConfig,
-    store: any,
+    store: { commit: (...events: unknown[]) => void },
     blobStore: BlobStore,
     storageOverride?: StorageAdapter
 ): Promise<boolean> {
@@ -37,15 +37,15 @@ export async function migrateLegacyV1(
             return false;
         }
 
-        const commitEvents: any[] = [];
+        const commitEvents: unknown[] = [];
         const blobPathsToDelete: string[] = [];
 
         for (const [key, item] of Object.entries(parsed.documents)) {
-            const doc = item as any;
-            const collection = doc.collection;
-            const id = doc.id;
-            const data = doc.data || {};
-            const updatedAt = doc.updatedAt || Date.now();
+            const doc = item as Record<string, unknown>;
+            const collection = typeof doc.collection === 'string' ? doc.collection : '';
+            const id = typeof doc.id === 'string' ? doc.id : '';
+            const data = (doc.data as Record<string, unknown>) || {};
+            const updatedAt = typeof doc.updatedAt === 'number' ? doc.updatedAt : Date.now();
 
             let blobHashes: Record<string, string> = {};
             const blobPath = `${dbPath}.blobs.${key}`;

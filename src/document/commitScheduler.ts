@@ -16,7 +16,7 @@ import { reportAsync } from './errors';
 export interface CommitSchedulerDocumentTarget {
     onCommitSuccess(
         newRev: number,
-        committedData: any,
+        committedData: unknown,
         overlayId: string,
         committedPatch: Record<string, unknown>
     ): void;

@@ -17,7 +17,7 @@ export interface StorageAdapter {
 
 export type BlobMap = Record<string, Uint8Array | Float32Array>;
 
-export interface DocumentRecord<T extends object = Record<string, any>> {
+export interface DocumentRecord<T extends object = Record<string, unknown>> {
     readonly collection: string;
     readonly id: string;
     readonly rev: number;
@@ -62,8 +62,8 @@ export interface EngineConfig {
     sessionId?: string;
     disableDevtools?: boolean;
     confirmUnsavedChanges?: boolean;
-    worker?: any;
-    sharedWorker?: any;
+    worker?: unknown;
+    sharedWorker?: unknown;
 }
 
 export interface LiveEngineAccess<T = unknown> {

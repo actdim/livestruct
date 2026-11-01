@@ -17,6 +17,7 @@ export default defineConfig({
         pool: 'forks',
         environment: 'node',
         include: ['tests/**/*.{test,spec}.ts', 'spikes/**/*.{test,spec}.ts'],
+        exclude: ['tests/browser/**', 'node_modules/**', 'dist/**'],
         includeSource: ['src/**/*.ts'],
         typecheck: {
             tsconfig: 'tsconfig.dev.json',

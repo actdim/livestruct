@@ -7,7 +7,7 @@
 import type { LiveDocument, ObservableLiveDocument } from './types';
 import { reportAsync } from './errors';
 
-const proxyCache = new WeakMap<LiveDocument<any>, ObservableLiveDocument<any>>();
+const proxyCache = new WeakMap<LiveDocument<object>, ObservableLiveDocument<object>>();
 
 /**
  * Creates or retrieves a MobX-reactive observable proxy around a LiveDocument.
@@ -21,9 +21,9 @@ const proxyCache = new WeakMap<LiveDocument<any>, ObservableLiveDocument<any>>()
 export function toObservableDocument<T extends object>(
     doc: LiveDocument<T>
 ): ObservableLiveDocument<T> {
-    const existing = proxyCache.get(doc);
+    const existing = proxyCache.get(doc as unknown as LiveDocument<object>);
     if (existing) {
-        return existing as ObservableLiveDocument<T>;
+        return existing as unknown as ObservableLiveDocument<T>;
     }
 
     const proxy = new Proxy(doc, {
@@ -40,7 +40,7 @@ export function toObservableDocument<T extends object>(
             // Fallback to reactive document data snapshot
             const data = target.data;
             if (typeof prop === 'string' && prop in data) {
-                return (data as any)[prop];
+                return (data as Record<string, unknown>)[prop];
             }
 
             return undefined;
@@ -50,9 +50,9 @@ export function toObservableDocument<T extends object>(
             if (typeof prop === 'string' && !(prop in target)) {
                 // Property mutation triggers document patch asynchronously
                 reportAsync(
-                    target.patch({ [prop]: value } as any),
+                    target.patchUnchecked({ [prop]: value }),
                     'observable.set',
-                    (target as any).errorSubject ?? (target as any).errors$
+                    (err) => (target as { reportError?: (e: Error) => void }).reportError?.(err)
                 );
                 return true;
             }
@@ -81,13 +81,13 @@ export function toObservableDocument<T extends object>(
                     configurable: true,
                     enumerable: true,
                     writable: true,
-                    value: (target.data as any)[prop],
+                    value: (target.data as Record<string, unknown>)[prop],
                 };
             }
             return undefined;
         },
     }) as ObservableLiveDocument<T>;
 
-    proxyCache.set(doc, proxy);
+    proxyCache.set(doc as unknown as LiveDocument<object>, proxy as unknown as ObservableLiveDocument<object>);
     return proxy;
 }

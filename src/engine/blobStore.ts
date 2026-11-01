@@ -135,7 +135,10 @@ export class OpfsBlobStore implements BlobStore {
         try {
             const dir = await this.getBlobsDirectory();
             const fileHandle = await dir.getFileHandle(hash, { create: true });
-            const createWriter = (fileHandle as any)['createWritable'];
+            const createWriter = (fileHandle as unknown as { createWritable?: () => Promise<FileSystemWritableFileStream> })['createWritable'];
+            if (!createWriter) {
+                throw new Error('createWritable is not supported');
+            }
             const writable = await createWriter.call(fileHandle);
             await writable.write(packed as unknown as BufferSource);
             await writable.close();

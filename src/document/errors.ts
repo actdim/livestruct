@@ -28,7 +28,7 @@ export function reportAsync<T>(
     context: string,
     errors$?: ErrorSink
 ): Promise<T | undefined> {
-    if (!promise || typeof (promise as any).then !== 'function') {
+    if (!promise || typeof (promise as unknown as { then?: unknown }).then !== 'function') {
         return Promise.resolve(undefined);
     }
     return promise.catch((rawErr: unknown) => {

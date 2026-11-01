@@ -1,10 +1,10 @@
 # Active Issues
 
 ## Active
-<!-- No active issues -->
+- [ ] `(debt)` [test-coverage-and-naming](ISSUES/debt--test-coverage-and-naming.md) - plan ready
 
 ## Backlog
-- [ ] `(debt)` [test-coverage-and-naming](ISSUES/debt--test-coverage-and-naming.md)
+<!-- No backlog issues -->
 
 ## Done (recent)
 - [x] `(spike)` [livestore-integration](ISSUES/done/spike--livestore-integration.md)

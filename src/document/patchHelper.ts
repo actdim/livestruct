@@ -140,12 +140,12 @@ export function toSqliteJsonPath(path: string): string {
  * Immutably updates a target object at path with SET semantics on a structural clone.
  * Replaces the target subtree without deep merging.
  */
-export function setAtPath<T extends object>(target: T, path: string, value: any): T {
+export function setAtPath<T extends object>(target: T, path: string, value: unknown): T {
     if (!path) {
-        return value;
+        return value as T;
     }
     const clone = structuredClone(target);
-    return setNestedPath(clone, path as any, value);
+    return setNestedPath(clone, path as unknown as NestedPath<T>, value as unknown as PathValue<T, NestedPath<T>>);
 }
 
 /**
@@ -168,14 +168,14 @@ export function buildPathPatch<T extends object, P extends NestedPath<T>>(
 
     const hasArrayIndex = segments.some((s) => /^\d+$/.test(s));
     if (!hasArrayIndex) {
-        let current: any = value;
+        let current: unknown = value;
         for (let i = segments.length - 1; i >= 0; i--) {
             current = { [segments[i]]: current };
         }
-        return current;
+        return current as Record<string, unknown>;
     }
 
     const updated = setNestedPath(target, path, value);
     const rootKey = segments[0];
-    return { [rootKey]: (updated as any)[rootKey] };
+    return { [rootKey]: (updated as Record<string, unknown>)[rootKey] };
 }

@@ -23,6 +23,9 @@ export * from './engine/index';
 export * from './lens/index';
 export * from './document/index';
 
+/** @deprecated use LiveDocEngine */
+export { LiveSqliteEngine } from './engine/index';
+
 /**
  * Creates and initializes a LiveStruct store instance.
  *
@@ -69,7 +72,7 @@ export async function createLiveStruct(config: LiveStructConfig): Promise<LiveSt
         onEvent: emitEvent,
     });
 
-    const commitScheduler = new CommitScheduler(engine as any, {
+    const commitScheduler = new CommitScheduler(engine, {
         commitPolicy: config.commitPolicy,
         commitDelayMs: config.commitDelayMs,
         maxCommitWaitMs: config.maxCommitWaitMs,
@@ -92,7 +95,7 @@ export async function createLiveStruct(config: LiveStructConfig): Promise<LiveSt
         }
     });
 
-    const collections = new Map<string, LiveCollection<any>>();
+    const collections = new Map<string, LiveCollection<object>>();
 
     const onPageHide = () => {
         reportAsync(commitScheduler.flushAll(), 'store.pagehide', (err) => commitScheduler.reportError(err));
@@ -112,13 +115,16 @@ export async function createLiveStruct(config: LiveStructConfig): Promise<LiveSt
 
     return {
         engine,
+        get storageMode(): string {
+            return engine.storageMode;
+        },
         get errors$() {
             return commitScheduler.errors$;
         },
         get events$() {
             return eventsSubject.asObservable();
         },
-        async collection<T extends object = Record<string, any>>(
+        async collection<T extends object = Record<string, unknown>>(
             name: string,
             options?: LiveDocumentOptions
         ): Promise<LiveCollection<T>> {

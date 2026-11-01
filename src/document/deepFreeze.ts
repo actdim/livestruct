@@ -9,7 +9,7 @@ export function deepFreeze<T>(obj: T): Readonly<T> {
     }
     Object.freeze(obj);
     for (const key of Object.getOwnPropertyNames(obj)) {
-        const val = (obj as any)[key];
+        const val = (obj as Record<string, unknown>)[key];
         if (
             val !== null &&
             (typeof val === 'object' || typeof val === 'function') &&

@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { autorun } from 'mobx';
 import { firstValueFrom } from 'rxjs';
 import { filter } from 'rxjs/operators';
+import { nextEmission } from './helpers';
 import { createLiveStruct, type LiveStoreInstance } from '../src/index';
 
 function calculatePercentiles(latenciesMs: number[]) {
@@ -168,24 +169,28 @@ describe('Transparent Lazy Commits and Real-Time Live Overlays', () => {
                 return origCommit.apply(dragStore.engine.store, args);
             });
 
-            // Simulate continuous dragging for 3000ms:
+            // Simulate continuous dragging for 3000ms using fake timers:
             // An update every 15ms (~66Hz), keeping trailing debounce continuously reset.
             // maxCommitWaitMs (1000ms) will force commits at ~1000ms, ~2000ms, ~3000ms, + trailing.
-            const startTime = Date.now();
+            vi.useFakeTimers();
             let step = 0;
-            while (Date.now() - startTime < 3000) {
-                step++;
-                void doc.patch({ x: step });
-                await new Promise((resolve) => setTimeout(resolve, 15));
+            try {
+                for (let i = 0; i < 200; i++) {
+                    step++;
+                    void doc.patch({ x: step });
+                    await vi.advanceTimersByTimeAsync(15);
+                }
+
+                // Flush remaining trailing debounce
+                await doc.flush();
+
+                // Total commits for 3s continuous dragging MUST be <= 4
+                expect(commitCount).toBeLessThanOrEqual(4);
+                expect(commitCount).toBeGreaterThanOrEqual(2);
+                expect(doc.data.x).toBe(step);
+            } finally {
+                vi.useRealTimers();
             }
-
-            // Flush remaining trailing debounce
-            await doc.flush();
-
-            // Total commits for 3s continuous dragging MUST be <= 4
-            expect(commitCount).toBeLessThanOrEqual(4);
-            expect(commitCount).toBeGreaterThanOrEqual(2);
-            expect(doc.data.x).toBe(step);
 
             commitSpy.mockRestore();
             await dragStore.close();
@@ -281,8 +286,8 @@ describe('Transparent Lazy Commits and Real-Time Live Overlays', () => {
                 data: { b: 99, c: 500 },
             });
 
-            // Wait a tick for CDC propagation
-            await new Promise((resolve) => setTimeout(resolve, 25));
+            // Wait for CDC propagation
+            await nextEmission(doc.$, (data) => data.b === 99);
 
             // View rebase: remote base { a: 1, b: 99, c: 500 } + local pending { a: 10 }
             // Result: { a: 10, b: 99, c: 500 }
@@ -317,7 +322,8 @@ describe('Transparent Lazy Commits and Real-Time Live Overlays', () => {
                 data: { a: 5 },
             });
 
-            await new Promise((resolve) => setTimeout(resolve, 25));
+            // Drain microtask queue
+            await Promise.resolve();
 
             // Structural equality check prevented redundant notification!
             expect(emissions.length).toBe(1);
@@ -356,8 +362,8 @@ describe('Transparent Lazy Commits and Real-Time Live Overlays', () => {
             // Mutate docA with lazy patch without flushing
             void docA.patch({ x: 200, y: 300 });
 
-            // Wait a tick for animation frame / BroadcastChannel message delivery
-            await new Promise((resolve) => setTimeout(resolve, 50));
+            // Wait for BroadcastChannel tentative overlay message delivery
+            await nextEmission(docB.$, (d) => d.x === 200 && docB.isTentative);
 
             // Viewport B sees tentative overlay in real time before commit
             expect(docB.data.x).toBe(200);
@@ -398,12 +404,12 @@ describe('Transparent Lazy Commits and Real-Time Live Overlays', () => {
             // Send tentative update from docA without committing
             void docA.patch({ title: 'Tentative Title' });
 
-            await new Promise((resolve) => setTimeout(resolve, 50));
+            await nextEmission(docB.$, (d) => d.title === 'Tentative Title' && docB.isTentative);
             expect(docB.data.title).toBe('Tentative Title');
             expect(docB.isTentative).toBe(true);
 
-            // Wait for TTL (120ms) to expire
-            await new Promise((resolve) => setTimeout(resolve, 250));
+            // Wait for TTL (120ms) to expire and tentative overlay to drop
+            await nextEmission(docB.$, (d) => !docB.isTentative && d.title === 'Committed Title');
 
             // Tentative overlay dropped after TTL
             expect(docB.isTentative).toBe(false);

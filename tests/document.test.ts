@@ -8,6 +8,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { autorun } from 'mobx';
 import { firstValueFrom, take, toArray } from 'rxjs';
+import { nextEmission } from './helpers';
 import {
     createLiveStruct,
     toObservableDocument,
@@ -198,8 +199,8 @@ describe('LiveDocument Subsystem', () => {
                 },
             });
 
-            // Wait a tick for CDC propagation
-            await new Promise((resolve) => setTimeout(resolve, 20));
+            // Wait for CDC propagation via nextEmission
+            await nextEmission(doc.$, (data) => data.age === 35);
 
             expect(doc.data.age).toBe(35);
             expect(doc.data.contact.email).toBe('external@example.com');
@@ -243,8 +244,8 @@ describe('LiveDocument Subsystem', () => {
             // Mutate via proxy property setter
             obsDoc.age = 31;
 
-            // Wait a microtask for patch resolution
-            await new Promise((resolve) => setTimeout(resolve, 10));
+            // Flush patch commit
+            await doc.flush();
 
             expect(obsDoc.age).toBe(31);
             expect(doc.data.age).toBe(31);

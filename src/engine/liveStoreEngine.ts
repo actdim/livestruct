@@ -25,14 +25,24 @@ import { MemoryStorageAdapter } from './storage';
 import { deepFreeze } from '../document/deepFreeze';
 import { setAtPath, toSqliteJsonPath } from '../document/patchHelper';
 
+export interface LiveStoreInstanceLike {
+    query: (params: { query?: string; bindValues?: unknown[]; [key: string]: unknown } | unknown) => Array<Record<string, unknown>>;
+    commit: (...events: unknown[]) => void;
+    subscribe: (table: unknown, cb: (rows: unknown[]) => void) => () => void;
+    storageMode?: string;
+    shutdown?: unknown;
+    shutdownPromise?: () => Promise<void>;
+    isClosed?: boolean;
+}
+
 export class LiveDocEngine {
     readonly config: EngineConfig;
-    store: any;
+    store: LiveStoreInstanceLike;
     readonly blobStore: BlobStore;
     readonly storage: StorageAdapter;
-    private readonly cdcSubject = new Subject<CDCEvent<any>>();
+    private readonly cdcSubject = new Subject<CDCEvent<unknown>>();
     private readonly localMutationIds = new Set<string>();
-    private readonly localKnownDocs = new Map<string, { rev: number; data: any; blobs: BlobMap }>();
+    private readonly localKnownDocs = new Map<string, { rev: number; data: unknown; blobs: BlobMap }>();
     private _isClosed = false;
     private unsubscribeTable?: () => void;
     private isInitialized = false;
@@ -45,24 +55,27 @@ export class LiveDocEngine {
         return this.store?.storageMode || this.storage?.mode || 'in-memory';
     }
 
-    get cdc$(): Observable<CDCEvent<any>> {
+    get cdc$(): Observable<CDCEvent<unknown>> {
         return this.cdcSubject.asObservable();
     }
 
     get subscriptionCount(): number {
-        return (this.cdcSubject as any).observers ? (this.cdcSubject as any).observers.length : 0;
+        return (this.cdcSubject as unknown as { observers?: unknown[] }).observers
+            ? (this.cdcSubject as unknown as { observers: unknown[] }).observers.length
+            : 0;
     }
 
-    constructor(config: EngineConfig, storeOrStorage?: any, blobStore?: BlobStore) {
+    constructor(config: EngineConfig, storeOrStorage?: unknown, blobStore?: BlobStore) {
         this.config = config;
 
-        if (storeOrStorage && (typeof storeOrStorage.read === 'function' || storeOrStorage.mode)) {
+        const maybeStorage = storeOrStorage as StorageAdapter | undefined;
+        if (maybeStorage && (typeof maybeStorage.read === 'function' || maybeStorage.mode)) {
             // Legacy StorageAdapter passed as 2nd argument
-            this.storage = storeOrStorage;
-            this.store = null;
+            this.storage = maybeStorage;
+            this.store = null as unknown as LiveStoreInstanceLike;
             this.blobStore = blobStore || resolveBlobStore(config.forceMemory || true);
         } else {
-            this.store = storeOrStorage;
+            this.store = storeOrStorage as LiveStoreInstanceLike;
             this.blobStore = blobStore || resolveBlobStore(config.forceMemory);
             this.storage = new MemoryStorageAdapter();
         }
@@ -90,7 +103,7 @@ export class LiveDocEngine {
 
         // Read existing rows to seed localKnownDocs without firing CDC
         try {
-            const initialRows = this.store.query(tables.docs);
+            const initialRows = this.store.query(tables.docs) as unknown as Array<{ key: string; rev: number; body: string }>;
             if (Array.isArray(initialRows)) {
                 for (const row of initialRows) {
                     try {
@@ -112,19 +125,20 @@ export class LiveDocEngine {
         this.isInitialized = true;
 
         // Reactive table subscription for background sync and remote CDC
-        this.unsubscribeTable = this.store.subscribe(tables.docs, (rows: any[]) => {
+        this.unsubscribeTable = this.store.subscribe(tables.docs, (rawRows: unknown[]) => {
             if (this._isClosed || !this.isInitialized) {
                 return;
             }
 
             const currentKeys = new Set<string>();
 
-            for (const row of rows) {
-                const key = row.key;
+            for (const item of rawRows) {
+                const row = item as Record<string, unknown>;
+                const key = String(row.key);
                 currentKeys.add(key);
 
                 // If this mutation originated locally on this engine instance, skip
-                if (row.mutationId && this.localMutationIds.has(row.mutationId)) {
+                if (row.mutationId && this.localMutationIds.has(String(row.mutationId))) {
                     continue;
                 }
 
@@ -132,40 +146,40 @@ export class LiveDocEngine {
                 if (!known) {
                     // Remote insert
                     try {
-                        const data = JSON.parse(row.body);
-                        this.localKnownDocs.set(key, { rev: row.rev, data, blobs: {} });
+                        const data = JSON.parse(String(row.body));
+                        this.localKnownDocs.set(key, { rev: Number(row.rev), data, blobs: {} });
                         this.cdcSubject.next({
                             type: 'insert',
                             kind: 'insert',
-                            collection: row.collection,
-                            id: row.id,
-                            rev: row.rev,
+                            collection: String(row.collection),
+                            id: String(row.id),
+                            rev: Number(row.rev),
                             delta: data,
                             data,
-                            timestamp: row.updatedAt,
-                            mutationId: row.mutationId,
-                            overlayId: row.overlayId || row.mutationId,
+                            timestamp: Number(row.updatedAt),
+                            mutationId: row.mutationId ? String(row.mutationId) : undefined,
+                            overlayId: row.overlayId ? String(row.overlayId) : row.mutationId ? String(row.mutationId) : undefined,
                             origin: 'remote',
                         });
                     } catch {
                         // Ignore parse errors
                     }
-                } else if (row.rev > known.rev) {
+                } else if (Number(row.rev) > known.rev) {
                     // Remote update
                     try {
-                        const data = JSON.parse(row.body);
-                        this.localKnownDocs.set(key, { rev: row.rev, data, blobs: {} });
+                        const data = JSON.parse(String(row.body));
+                        this.localKnownDocs.set(key, { rev: Number(row.rev), data, blobs: {} });
                         this.cdcSubject.next({
                             type: 'update',
                             kind: 'update',
-                            collection: row.collection,
-                            id: row.id,
-                            rev: row.rev,
+                            collection: String(row.collection),
+                            id: String(row.id),
+                            rev: Number(row.rev),
                             delta: data,
                             data,
-                            timestamp: row.updatedAt,
-                            mutationId: row.mutationId,
-                            overlayId: row.overlayId || row.mutationId,
+                            timestamp: Number(row.updatedAt),
+                            mutationId: row.mutationId ? String(row.mutationId) : undefined,
+                            overlayId: row.overlayId ? String(row.overlayId) : row.mutationId ? String(row.mutationId) : undefined,
                             origin: 'remote',
                         });
                     } catch {
@@ -202,7 +216,7 @@ export class LiveDocEngine {
     /**
      * Inserts a new document. Throws if a document with the same collection and id already exists.
      */
-    async insertDoc<T extends object = Record<string, any>>(
+    async insertDoc<T extends object = Record<string, unknown>>(
         collection: string,
         id: string,
         data: T,
@@ -281,7 +295,7 @@ export class LiveDocEngine {
     /**
      * Replaces an existing document or creates it if missing.
      */
-    async updateDoc<T extends object = Record<string, any>>(
+    async updateDoc<T extends object = Record<string, unknown>>(
         collection: string,
         id: string,
         data: T,
@@ -294,7 +308,7 @@ export class LiveDocEngine {
         const existingRows = this.store.query({
             query: 'SELECT rev, body, blobs FROM docs WHERE key = ?',
             bindValues: [key],
-        });
+        }) as unknown as Array<{ rev: number; body: string; blobs?: string }>;
         const existing = existingRows && existingRows.length > 0 ? existingRows[0] : null;
 
         const now = Date.now();
@@ -363,7 +377,7 @@ export class LiveDocEngine {
     /**
      * Applies an RFC 7396 JSON merge patch atomically to an existing document.
      */
-    async patchDoc<T extends object = Record<string, any>>(
+    async patchDoc<T extends object = Record<string, unknown>>(
         collection: string,
         id: string,
         patch: Partial<T> | Record<string, unknown>,
@@ -376,7 +390,7 @@ export class LiveDocEngine {
         const rows = this.store.query({
             query: 'SELECT rev, body, blobs FROM docs WHERE key = ?',
             bindValues: [key],
-        });
+        }) as unknown as Array<{ rev: number; body: string; blobs?: string }>;
         if (!rows || rows.length === 0) {
             throw new Error(`Document with id '${id}' not found in collection '${collection}'.`);
         }
@@ -452,7 +466,7 @@ export class LiveDocEngine {
     /**
      * Sets a nested property path using SQLite json_set with SET semantics (DocPathSet).
      */
-    async setPathDoc<T extends object = Record<string, any>>(
+    async setPathDoc<T extends object = Record<string, unknown>>(
         collection: string,
         id: string,
         path: string,
@@ -465,7 +479,7 @@ export class LiveDocEngine {
         const rows = this.store.query({
             query: 'SELECT rev, body, blobs FROM docs WHERE key = ?',
             bindValues: [key],
-        });
+        }) as unknown as Array<{ rev: number; body: string; blobs?: string }>;
         if (!rows || rows.length === 0) {
             throw new Error(`Document with id '${id}' not found in collection '${collection}'.`);
         }
@@ -507,7 +521,7 @@ export class LiveDocEngine {
         );
 
         const rootProp = path.split('.')[0];
-        const delta = deepFreeze(structuredClone({ [rootProp]: (updatedData as any)[rootProp] })) as Partial<T>;
+        const delta = deepFreeze(structuredClone({ [rootProp]: (updatedData as Record<string, unknown>)[rootProp] })) as Partial<T>;
 
         this.cdcSubject.next({
             type: 'update',
@@ -529,7 +543,7 @@ export class LiveDocEngine {
     /**
      * Emits a CDC event directly on the engine CDC subject.
      */
-    emitCDC(event: CDCEvent<any>): void {
+    emitCDC(event: CDCEvent<unknown>): void {
         this.cdcSubject.next(event);
     }
 
@@ -548,16 +562,16 @@ export class LiveDocEngine {
             overlayId?: string;
             emitCDC?: boolean;
         }>
-    ): Promise<Array<DocumentRecord<any>>> {
+    ): Promise<Array<DocumentRecord<Record<string, unknown>>>> {
         this.assertNotClosed();
         if (entries.length === 0) {
             return [];
         }
 
         const now = Date.now();
-        const results: Array<DocumentRecord<any>> = [];
-        const commitEvents: any[] = [];
-        const cdcToEmit: Array<CDCEvent<any>> = [];
+        const results: Array<DocumentRecord<Record<string, unknown>>> = [];
+        const commitEvents: unknown[] = [];
+        const cdcToEmit: Array<CDCEvent<unknown>> = [];
 
         for (const entry of entries) {
             const { collection, id, patch, pathSet, pathSets, blobs, mutationId, overlayId, emitCDC } = entry;
@@ -566,17 +580,17 @@ export class LiveDocEngine {
             const rows = this.store.query({
                 query: 'SELECT rev, body, blobs FROM docs WHERE key = ?',
                 bindValues: [key],
-            });
+            }) as unknown as Array<{ rev: number; body: string; blobs?: string }>;
             if (!rows || rows.length === 0) {
                 throw new Error(`Document with id '${id}' not found in collection '${collection}'.`);
             }
 
             const existingRow = rows[0];
-            const existingData = JSON.parse(existingRow.body);
+            const existingData = JSON.parse(String(existingRow.body));
             let patchedData = existingData;
 
             if (patch) {
-                patchedData = jsonMergePatch<any>(patchedData, patch);
+                patchedData = jsonMergePatch<Record<string, unknown>>(patchedData, patch);
             }
 
             const allPathSets = pathSets ?? (pathSet ? [pathSet] : []);
@@ -585,7 +599,7 @@ export class LiveDocEngine {
             }
 
             patchedData = deepFreeze(structuredClone(patchedData));
-            const rev = existingRow.rev + 1;
+            const rev = Number(existingRow.rev) + 1;
             const mutId = mutationId || overlayId || `mut_${id}_${now}_${Math.random().toString(36).slice(2, 7)}`;
             this.localMutationIds.add(mutId);
 
@@ -594,7 +608,7 @@ export class LiveDocEngine {
                 const blobHashes: Record<string, string> = {};
                 if (existingRow.blobs && existingRow.blobs !== '{}') {
                     try {
-                        Object.assign(blobHashes, JSON.parse(existingRow.blobs));
+                        Object.assign(blobHashes, JSON.parse(String(existingRow.blobs)));
                     } catch {
                         // Ignore
                     }
@@ -607,7 +621,7 @@ export class LiveDocEngine {
                 blobHashesString = JSON.stringify(blobHashes);
             }
 
-            const doc: DocumentRecord<any> = {
+            const doc: DocumentRecord<Record<string, unknown>> = {
                 collection,
                 id,
                 rev,
@@ -650,7 +664,7 @@ export class LiveDocEngine {
             }
 
             if (emitCDC) {
-                const deltaPayload = patch ?? (allPathSets.length > 0 ? { [allPathSets[0].path.split('.')[0]]: (patchedData as any)[allPathSets[0].path.split('.')[0]] } : {});
+                const deltaPayload = patch ?? (allPathSets.length > 0 ? { [allPathSets[0].path.split('.')[0]]: (patchedData as Record<string, unknown>)[allPathSets[0].path.split('.')[0]] } : {});
                 cdcToEmit.push({
                     type: 'update',
                     kind: 'update',
@@ -686,7 +700,7 @@ export class LiveDocEngine {
         const rows = this.store.query({
             query: 'SELECT rev FROM docs WHERE key = ?',
             bindValues: [key],
-        });
+        }) as unknown as Array<{ rev: number }>;
         if (!rows || rows.length === 0) {
             return false;
         }
@@ -728,7 +742,7 @@ export class LiveDocEngine {
     /**
      * Gets a document snapshot by id, rehydrating binary blobs from BlobStore.
      */
-    async getDoc<T extends object = Record<string, any>>(
+    async getDoc<T extends object = Record<string, unknown>>(
         collection: string,
         id: string
     ): Promise<DocumentRecord<T> | null> {
@@ -738,7 +752,7 @@ export class LiveDocEngine {
         const rows = this.store.query({
             query: 'SELECT rev, body, blobs, updatedAt FROM docs WHERE key = ?',
             bindValues: [key],
-        });
+        }) as unknown as Array<{ rev: number; body: string; blobs?: string; updatedAt: number }>;
         if (!rows || rows.length === 0) {
             return null;
         }
@@ -747,7 +761,7 @@ export class LiveDocEngine {
         let data: T;
         const known = this.localKnownDocs.get(key);
         if (known && known.rev === row.rev) {
-            data = known.data;
+            data = known.data as T;
         } else {
             data = deepFreeze(structuredClone(JSON.parse(row.body) as T));
             this.localKnownDocs.set(key, { rev: row.rev, data, blobs: known?.blobs ?? {} });
@@ -781,7 +795,7 @@ export class LiveDocEngine {
     /**
      * Queries all documents in a collection, optionally filtered by predicate.
      */
-    async queryDocs<T extends object = Record<string, any>>(
+    async queryDocs<T extends object = Record<string, unknown>>(
         collection: string,
         predicate?: (doc: DocumentRecord<T>) => boolean
     ): Promise<Array<DocumentRecord<T>>> {
@@ -789,7 +803,7 @@ export class LiveDocEngine {
         const rows = this.store.query({
             query: 'SELECT id, rev, body, blobs, updatedAt FROM docs WHERE collection = ?',
             bindValues: [collection],
-        });
+        }) as unknown as Array<{ id: string; rev: number; body: string; blobs?: string; updatedAt: number }>;
 
         const results: Array<DocumentRecord<T>> = [];
         if (!rows) {
@@ -801,7 +815,7 @@ export class LiveDocEngine {
             let data: T;
             const known = this.localKnownDocs.get(key);
             if (known && known.rev === row.rev) {
-                data = known.data;
+                data = known.data as T;
             } else {
                 data = deepFreeze(structuredClone(JSON.parse(row.body) as T));
                 this.localKnownDocs.set(key, { rev: row.rev, data, blobs: {} });
@@ -872,7 +886,7 @@ export class LiveDocEngine {
             throw new Error('Raw commit event must be a non-null object.');
         }
 
-        const raw = event as RawCommitEvent<any>;
+        const raw = event as RawCommitEvent<unknown>;
         const type = raw.type;
         const collection = raw.collection || defaultCollection;
         const id = raw.id;
@@ -882,11 +896,11 @@ export class LiveDocEngine {
         }
 
         if (type === 'insert') {
-            await this.insertDoc(collection, id, raw.data || {}, raw.blobs, raw.mutationId);
+            await this.insertDoc(collection, id, (raw.data || {}) as Record<string, unknown>, raw.blobs, raw.mutationId);
         } else if (type === 'update') {
-            await this.updateDoc(collection, id, raw.data || {}, raw.blobs, raw.mutationId);
+            await this.updateDoc(collection, id, (raw.data || {}) as Record<string, unknown>, raw.blobs, raw.mutationId);
         } else if (type === 'patch') {
-            await this.patchDoc(collection, id, raw.data || {}, raw.blobs, raw.mutationId);
+            await this.patchDoc(collection, id, (raw.data || {}) as Record<string, unknown>, raw.blobs, raw.mutationId);
         } else if (type === 'delete') {
             await this.deleteDoc(collection, id, raw.mutationId);
         } else {
@@ -930,14 +944,15 @@ export class LiveDocEngine {
         }
 
         // Map column aliases for compatibility
-        const mapped = rows.map((row: any) => {
-            const result: Record<string, any> = { ...row };
+        const mapped = rows.map((rawRow: unknown) => {
+            const row = rawRow as Record<string, unknown>;
+            const result: Record<string, unknown> = { ...row };
             if (result.body !== undefined && result.data === undefined) {
                 result.data = result.body;
             }
             if (result.data !== undefined && result.doc_data === undefined) {
                 try {
-                    result.doc_data = JSON.parse(result.data);
+                    result.doc_data = JSON.parse(String(result.data));
                 } catch {
                     // Ignore parse error
                 }
@@ -982,13 +997,14 @@ export class LiveDocEngine {
             try {
                 const rows = this.store.query(tables.docs);
                 if (Array.isArray(rows)) {
-                    const dumpDocs: Record<string, any> = {};
-                    for (const r of rows) {
-                        dumpDocs[`${r.collection}:${r.id}`] = {
+                    const dumpDocs: Record<string, unknown> = {};
+                    for (const rawR of rows) {
+                        const r = rawR as Record<string, unknown>;
+                        dumpDocs[`${String(r.collection)}:${String(r.id)}`] = {
                             collection: r.collection,
                             id: r.id,
                             rev: r.rev,
-                            data: JSON.parse(r.body),
+                            data: JSON.parse(String(r.body)),
                             updatedAt: r.updatedAt,
                         };
                     }
@@ -1025,7 +1041,7 @@ export class LiveDocEngine {
     }
 }
 
-// Deprecated backward-compatible alias
+/** @deprecated use LiveDocEngine */
 export { LiveDocEngine as LiveSqliteEngine };
 
 /**

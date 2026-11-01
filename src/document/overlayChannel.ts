@@ -76,8 +76,8 @@ export class OverlayChannel {
     private readonly receivedOverlays = new Map<string, ReceivedOverlayEntry>();
     private readonly outgoingPending = new Map<string, OutgoingPendingEntry>();
 
-    private frameTimer: any = null;
-    private ttlTimer: any = null;
+    private frameTimer: ReturnType<typeof setTimeout> | number | null = null;
+    private ttlTimer: ReturnType<typeof setInterval> | number | null = null;
     private isDisposed = false;
 
     constructor(options: OverlayChannelOptions) {
@@ -383,7 +383,7 @@ export class OverlayChannel {
         this.isDisposed = true;
 
         if (this.frameTimer !== null) {
-            if (typeof cancelAnimationFrame === 'function') {
+            if (typeof cancelAnimationFrame === 'function' && typeof this.frameTimer === 'number') {
                 cancelAnimationFrame(this.frameTimer);
             } else {
                 clearTimeout(this.frameTimer);

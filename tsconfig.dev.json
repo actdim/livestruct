@@ -24,7 +24,8 @@
         "package.json",
         "vite.config.ts",
         "vitest.node.config.ts",
-        "vitest.setup.ts"
+        "vitest.setup.ts",
+        "playwright.config.ts"
     ],
     "exclude": [".out", "node_modules"]
 }

@@ -6,6 +6,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { firstValueFrom } from 'rxjs';
+import { nextEmission } from './helpers';
 import {
     createLiveStruct,
     type LiveStoreInstance,
@@ -160,8 +161,8 @@ describe('LiveCollection Subsystem', () => {
                 category: 'stationery',
             });
 
-            // Wait a tick for CDC propagation
-            await new Promise((resolve) => setTimeout(resolve, 20));
+            // Wait for CDC propagation via nextEmission
+            await nextEmission(productsCol.query$, (list) => list.length === 1);
             expect(emittedCounts).toContain(1);
 
             // Create doc 2
@@ -172,13 +173,13 @@ describe('LiveCollection Subsystem', () => {
                 category: 'stationery',
             });
 
-            await new Promise((resolve) => setTimeout(resolve, 20));
+            await nextEmission(productsCol.query$, (list) => list.length === 2);
             expect(emittedCounts).toContain(2);
 
             // Delete doc 1
             await productsCol.delete('item-1');
 
-            await new Promise((resolve) => setTimeout(resolve, 20));
+            await nextEmission(productsCol.query$, (list) => list.length === 1);
             expect(emittedCounts[emittedCounts.length - 1]).toBe(1);
 
             sub.unsubscribe();

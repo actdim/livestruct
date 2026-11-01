@@ -8,25 +8,25 @@
 import { BehaviorSubject, Subject, Observable, Subscription, EMPTY } from 'rxjs';
 import { filter } from 'rxjs/operators';
 import { createAtom, type IAtom } from 'mobx';
-import type { LiveEngineAccess, LiveSqliteEngine } from '../engine/index';
+import type { LiveEngineAccess, LiveDocEngine } from '../engine/index';
 import type { CDCEvent } from '../engine/types';
 import { jsonMergePatch, mergePatches } from '../engine/patch';
 import type { NestedPath, PathValue } from '../lens/index';
 import type { LiveDocument, LiveDocumentOptions, LiveStructEvent, PatchPayload } from './types';
-import { assertJsonSafe, setAtPath, buildPathPatch } from './patchHelper';
+import { assertJsonSafe, setAtPath } from './patchHelper';
 import { deepFreeze } from './deepFreeze';
 import { deepEquals } from './equal';
 import { CommitScheduler, type CommitSchedulerDocumentTarget } from './commitScheduler';
 import type { OverlayChannel, OverlayDocumentTarget } from './overlayChannel';
 
-export class LiveDocumentImpl<T extends object = Record<string, any>>
+export class LiveDocumentImpl<T extends object = Record<string, unknown>>
     implements LiveDocument<T>, CommitSchedulerDocumentTarget, OverlayDocumentTarget
 {
     readonly id: string;
     readonly collectionName: string;
     readonly engine: LiveEngineAccess<T>;
 
-    private readonly rawEngine: LiveSqliteEngine;
+    private readonly rawEngine: LiveDocEngine;
     private readonly commitScheduler: CommitScheduler;
     private readonly overlayChannel?: OverlayChannel;
     private readonly options?: LiveDocumentOptions;
@@ -54,7 +54,7 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
         id: string,
         initialData: T,
         initialRev: number,
-        rawEngine: LiveSqliteEngine,
+        rawEngine: LiveDocEngine,
         engineAccess: LiveEngineAccess<T>,
         commitScheduler?: CommitScheduler,
         overlayChannel?: OverlayChannel,
@@ -72,7 +72,7 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
         this.onEvent = onEvent;
         this.allEvents$ = allEvents$;
 
-        this.commitScheduler = commitScheduler ?? new CommitScheduler(rawEngine as any);
+        this.commitScheduler = commitScheduler ?? new CommitScheduler(rawEngine);
         this.overlayChannel = overlayChannel;
 
         this.committedData = deepFreeze(structuredClone(initialData)) as unknown as T;
@@ -126,7 +126,7 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
             }
 
             const delta = (event.delta || event.data) as Partial<T>;
-            if (event.kind === 'replace' || (event as any).type === 'replace') {
+            if (event.kind === 'replace' || (event as { kind?: string; type?: string }).type === 'replace') {
                 const replacement = (event.data || delta) as T;
                 this.committedData = deepFreeze(structuredClone(replacement)) as unknown as T;
             } else if (event.type === 'insert') {
@@ -159,7 +159,7 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
                 nextData = jsonMergePatch<T>(nextData, this.localPendingPatch);
             }
             for (const ps of this.localPendingPathSets) {
-                nextData = setAtPath(nextData as any, ps.path, ps.value);
+                nextData = setAtPath(nextData as unknown as object, ps.path, ps.value) as unknown as T;
             }
         } else if (this.remoteTentativePatch !== null) {
             nextData = jsonMergePatch<T>(this.committedData, this.remoteTentativePatch);
@@ -281,6 +281,10 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
         return promise;
     }
 
+    async patchUnchecked(patch: Record<string, unknown>): Promise<void> {
+        return this.patch(patch as PatchPayload<T>);
+    }
+
     async patchPath<P extends NestedPath<T>>(path: P, value: PathValue<T, P>): Promise<void> {
         if (this.disposed) {
             throw new Error(`Cannot patch disposed LiveDocument '${this.id}'.`);
@@ -307,7 +311,7 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
 
         const rootProp = pathStr.split('.')[0];
         const delta = deepFreeze(
-            structuredClone({ [rootProp]: (this.currentData as any)[rootProp] })
+            structuredClone({ [rootProp]: (this.currentData as Record<string, unknown>)[rootProp] })
         ) as Partial<T>;
 
         this.rawEngine.emitCDC({
@@ -365,9 +369,9 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
 
     onCommitSuccess(
         newRev: number,
-        committedData: any,
+        committedData: unknown,
         overlayId: string,
-        committedPatch: Record<string, unknown>
+        _committedPatch: Record<string, unknown>
     ): void {
         if (this.disposed) {
             return;

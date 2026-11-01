@@ -11,3 +11,8 @@ dist
 .along/dashboard.html
 .along/DASHBOARD.md
 
+# Playwright
+test-results/
+playwright-report/
+
+

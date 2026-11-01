@@ -3,6 +3,8 @@
  * Compile-time type-checked property path resolution with recursion depth guards.
  */
 
+export type { PatchPayload } from '../document/types';
+
 export type Primitive = string | number | boolean | bigint | symbol | null | undefined;
 
 export type LeafTypes =
@@ -85,7 +87,7 @@ export type NestedPath<T, Depth extends DepthCounter = []> = IsAny<T> extends tr
  * Resolve the value type at dot-separated path P on type T.
  */
 export type PathValue<T, P extends string> = IsAny<T> extends true
-    ? any
+    ? unknown
     : P extends `${infer Key}.${infer Rest}`
       ? Key extends keyof NonNullable<T>
           ? PathValue<NonNullable<T>[Key], Rest>

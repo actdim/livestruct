@@ -45,7 +45,7 @@ describe('LiveStore-Backed Engine (LiveDocEngine)', () => {
         expect('removable' in doc2.data).toBe(false); // Null-deleted
 
         // Verify snapshot from getDoc
-        const fetched = await engine.getDoc('shapes', 's-1');
+        const fetched = await engine.getDoc<{ metrics: { width: number; height: number }; tags: string[]; removable?: boolean }>('shapes', 's-1');
         expect(fetched?.rev).toBe(2);
         expect(fetched?.data.metrics.width).toBe(120);
         expect('removable' in fetched!.data).toBe(false);

@@ -3,7 +3,7 @@ protocol: along
 protocol_version: "4.5.4"
 slug: test-coverage-and-naming
 type: debt
-status: open
+status: in-progress
 priority: low
 created: 2026-10-31
 updated: 2026-11-01
@@ -11,6 +11,7 @@ agent: claude-code
 tags: [tests, types]
 blocked_by: [feat--transparent-lazy-commit, bug--engine-correctness-batch]
 related: []
+plan_status: approved
 ---
 # Browser integration tests, no fixed sleeps, deprecated aliases, strict types
 
@@ -60,9 +61,9 @@ Steps
 7. Docs: `docs/topic--setup-and-workflow.md` section "Browser tests" (install `pnpm exec playwright install chromium`, run `pnpm test:browser`).
 
 Acceptance
-- [ ] `grep -rn "setTimeout(resolve" tests` empty.
-- [ ] Playwright suite green locally (`pnpm test:browser`), documented in `docs/topic--setup-and-workflow.md`.
-- [ ] `pnpm lint` with `no-explicit-any: error` green; livestruct-demo and msgmesh-store compile against strict `PatchPayload`.
+- [x] `grep -rn "setTimeout(resolve" tests` empty.
+- [x] Playwright suite green locally (`pnpm test:browser`), documented in `docs/topic--setup-and-workflow.md`.
+- [x] `pnpm lint` with `no-explicit-any: error` green; livestruct-demo and msgmesh-store compile against strict `PatchPayload`.
 
 ## Ticket map and launch order
 

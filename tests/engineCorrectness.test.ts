@@ -13,6 +13,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { nextEmission } from './helpers';
 import {
     createLiveStruct,
     type LiveStoreInstance,
@@ -87,8 +88,9 @@ describe('Engine Correctness Batch (REQ-1 to REQ-7)', () => {
             doc.dispose();
             obs.name = 'Dave';
 
-            // Wait a tick for promise microtasks to settle
-            await new Promise((r) => setTimeout(r, 20));
+            // Drain microtask queue so promise rejection is caught by reportAsync
+            await Promise.resolve();
+            await Promise.resolve();
 
             expect(unhandledRejections).toEqual([]);
         });

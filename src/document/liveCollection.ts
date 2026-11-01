@@ -5,7 +5,7 @@
  */
 
 import { BehaviorSubject, Subject, Observable, Subscription } from 'rxjs';
-import type { LiveEngineAccess, LiveSqliteEngine } from '../engine/index';
+import type { LiveEngineAccess, LiveDocEngine } from '../engine/index';
 import type { LiveCollection, LiveDocument, LiveDocumentOptions, LiveStructEvent } from './types';
 import { LiveDocumentImpl } from './liveDocument';
 import type { CommitScheduler } from './commitScheduler';
@@ -13,11 +13,11 @@ import type { OverlayChannel } from './overlayChannel';
 import { reportAsync } from './errors';
 import { assertJsonSafe } from './patchHelper';
 
-export class LiveCollectionImpl<T extends object = Record<string, any>>
+export class LiveCollectionImpl<T extends object = Record<string, unknown>>
     implements LiveCollection<T>
 {
     readonly name: string;
-    private readonly rawEngine: LiveSqliteEngine;
+    private readonly rawEngine: LiveDocEngine;
     private readonly engineAccess: LiveEngineAccess<T>;
     private readonly commitScheduler?: CommitScheduler;
     private readonly overlayChannel?: OverlayChannel;
@@ -35,7 +35,7 @@ export class LiveCollectionImpl<T extends object = Record<string, any>>
 
     constructor(
         name: string,
-        rawEngine: LiveSqliteEngine,
+        rawEngine: LiveDocEngine,
         commitScheduler?: CommitScheduler,
         overlayChannel?: OverlayChannel,
         options?: LiveDocumentOptions,
