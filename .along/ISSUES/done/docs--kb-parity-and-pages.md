@@ -3,7 +3,8 @@ protocol: along
 protocol_version: "4.5.4"
 slug: kb-parity-and-pages
 type: docs
-status: in-progress
+status: done
+completed: 2026-11-01
 priority: medium
 created: 2026-11-01
 updated: 2026-11-01
@@ -27,7 +28,7 @@ API reference), has no documentation site, and `llms-full.txt` is not compiled f
 - REQ-4: `.github/workflows/pages.yml` MUST deploy the site to GitHub Pages on push to `main`.
 
 ## Acceptance Criteria
-- [ ] New topics exist, cross-linked from `docs/INDEX.md` and README; every API name cited exists in `src/`.
-- [ ] `along kb-sync --check` reports no broken links.
-- [ ] `pnpm run docs:build` succeeds locally.
-- [ ] `pages.yml` mirrors the dynstruct workflow.
+- [x] New topics exist, cross-linked from `docs/INDEX.md` and README; every API name cited exists in `src/`.
+- [x] `along kb-sync --check` reports no broken links.
+- [x] `pnpm run docs:build` succeeds locally.
+- [x] `pages.yml` mirrors the dynstruct workflow.
