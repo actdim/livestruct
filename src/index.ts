@@ -16,6 +16,7 @@ import {
     CommitScheduler,
     LiveCollectionImpl,
     OverlayChannel,
+    reportAsync,
 } from './document/index';
 
 export * from './engine/index';
@@ -94,11 +95,11 @@ export async function createLiveStruct(config: LiveStructConfig): Promise<LiveSt
     const collections = new Map<string, LiveCollection<any>>();
 
     const onPageHide = () => {
-        void commitScheduler.flushAll();
+        reportAsync(commitScheduler.flushAll(), 'store.pagehide', (err) => commitScheduler.reportError(err));
     };
     const onVisibilityChange = () => {
         if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
-            void commitScheduler.flushAll();
+            reportAsync(commitScheduler.flushAll(), 'store.visibilitychange', (err) => commitScheduler.reportError(err));
         }
     };
 

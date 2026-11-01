@@ -6,6 +6,7 @@
 import type { Observable } from 'rxjs';
 import type { LiveEngineAccess, LiveSqliteEngine } from '../engine/index';
 import type { NestedPath, PathValue } from '../lens/index';
+export * from './errors';
 
 /**
  * Common disposable contract for documents, collections, and subscriptions.
@@ -111,6 +112,16 @@ export interface LiveDocument<T extends object = Record<string, any>> extends Di
     patchPath<P extends NestedPath<T>>(path: P, value: PathValue<T, P>): Promise<void>;
 
     /**
+     * Replaces the document completely, rebasing any pending local patches on top.
+     */
+    replace(value: T): Promise<void>;
+
+    /**
+     * Active subscription count for this document.
+     */
+    readonly subscriptionCount?: number;
+
+    /**
      * Flushes all pending uncommitted patches for this document immediately.
      */
     flush(): Promise<void>;
@@ -126,11 +137,13 @@ export interface LiveDocument<T extends object = Record<string, any>> extends Di
  */
 export interface LiveCollection<T extends object = Record<string, any>> extends Disposable {
     readonly name: string;
+    readonly subscriptionCount: number;
     get(id: string): Promise<LiveDocument<T> | null>;
     create(id: string, initialData: T): Promise<LiveDocument<T>>;
     delete(id: string): Promise<void>;
     find(predicate?: (item: T) => boolean): Promise<Array<LiveDocument<T>>>;
     readonly query$: Observable<Array<LiveDocument<T>>>;
+    readonly errors$: Observable<Error>;
 
     /**
      * Flushes all pending uncommitted patches for documents in this collection.

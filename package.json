@@ -95,9 +95,6 @@
     "peerDependenciesMeta": {
         "@actdim/msgmesh": {
             "optional": true
-        },
-        "mobx": {
-            "optional": true
         }
     },
     "devDependencies": {

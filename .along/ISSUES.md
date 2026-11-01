@@ -1,10 +1,9 @@
 # Active Issues
 
 ## Active
-<!-- No active issues -->
+- [ ] `(bug)` [engine-correctness-batch](ISSUES/bug--engine-correctness-batch.md)
 
 ## Backlog
-- [ ] `(bug)` [engine-correctness-batch](ISSUES/bug--engine-correctness-batch.md)
 - [ ] `(debt)` [test-coverage-and-naming](ISSUES/debt--test-coverage-and-naming.md)
 
 ## Done (recent)

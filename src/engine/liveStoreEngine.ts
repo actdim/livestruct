@@ -22,6 +22,8 @@ import { resolveLiveStoreAdapter } from './adapter';
 import { resolveBlobStore, type BlobStore } from './blobStore';
 import { migrateLegacyV1 } from './migrateV1';
 import { MemoryStorageAdapter } from './storage';
+import { deepFreeze } from '../document/deepFreeze';
+import { setAtPath, toSqliteJsonPath } from '../document/patchHelper';
 
 export class LiveDocEngine {
     readonly config: EngineConfig;
@@ -45,6 +47,10 @@ export class LiveDocEngine {
 
     get cdc$(): Observable<CDCEvent<any>> {
         return this.cdcSubject.asObservable();
+    }
+
+    get subscriptionCount(): number {
+        return (this.cdcSubject as any).observers ? (this.cdcSubject as any).observers.length : 0;
     }
 
     constructor(config: EngineConfig, storeOrStorage?: any, blobStore?: BlobStore) {
@@ -230,7 +236,7 @@ export class LiveDocEngine {
             }
         }
 
-        const clonedData = jsonMergePatch<T>({} as T, data);
+        const clonedData = deepFreeze(structuredClone(jsonMergePatch<T>({} as T, data)));
         const doc: DocumentRecord<T> = {
             collection,
             id,
@@ -262,7 +268,7 @@ export class LiveDocEngine {
             collection,
             id,
             rev: 1,
-            delta: clonedData,
+            delta: deepFreeze(structuredClone(clonedData)),
             data: clonedData,
             timestamp: now,
             mutationId: hasExplicitMutationId ? mutId : undefined,
@@ -314,7 +320,7 @@ export class LiveDocEngine {
             }
         }
 
-        const clonedData = jsonMergePatch<T>({} as T, data);
+        const clonedData = deepFreeze(structuredClone(jsonMergePatch<T>({} as T, data)));
         const doc: DocumentRecord<T> = {
             collection,
             id,
@@ -340,11 +346,11 @@ export class LiveDocEngine {
 
         this.cdcSubject.next({
             type: existing ? 'update' : 'insert',
-            kind: existing ? 'update' : 'insert',
+            kind: existing ? 'replace' : 'insert',
             collection,
             id,
             rev,
-            delta: clonedData,
+            delta: deepFreeze(structuredClone(clonedData)),
             data: clonedData,
             timestamp: now,
             mutationId: hasExplicitMutationId ? mutId : undefined,
@@ -377,7 +383,7 @@ export class LiveDocEngine {
 
         const existingRow = rows[0];
         const existingData = JSON.parse(existingRow.body);
-        const patchedData = jsonMergePatch<T>(existingData, patch);
+        const patchedData = deepFreeze(structuredClone(jsonMergePatch<T>(existingData, patch)));
         const now = Date.now();
         const rev = existingRow.rev + 1;
         const hasExplicitMutationId = mutationId !== undefined;
@@ -432,8 +438,85 @@ export class LiveDocEngine {
             collection,
             id,
             rev,
-            delta: patch as Partial<T>,
+            delta: deepFreeze(structuredClone(patch as Partial<T>)),
             data: patchedData,
+            timestamp: now,
+            mutationId: hasExplicitMutationId ? mutId : undefined,
+            overlayId: hasExplicitMutationId ? mutId : undefined,
+            origin: 'local',
+        });
+
+        return doc;
+    }
+
+    /**
+     * Sets a nested property path using SQLite json_set with SET semantics (DocPathSet).
+     */
+    async setPathDoc<T extends object = Record<string, any>>(
+        collection: string,
+        id: string,
+        path: string,
+        value: unknown,
+        mutationId?: string
+    ): Promise<DocumentRecord<T>> {
+        this.assertNotClosed();
+        const key = makeDocKey(collection, id);
+
+        const rows = this.store.query({
+            query: 'SELECT rev, body, blobs FROM docs WHERE key = ?',
+            bindValues: [key],
+        });
+        if (!rows || rows.length === 0) {
+            throw new Error(`Document with id '${id}' not found in collection '${collection}'.`);
+        }
+
+        const existingRow = rows[0];
+        const existingData = JSON.parse(existingRow.body);
+        const updatedData = deepFreeze(structuredClone(setAtPath(existingData, path, value))) as T;
+        const now = Date.now();
+        const rev = existingRow.rev + 1;
+        const hasExplicitMutationId = mutationId !== undefined;
+        const mutId = mutationId || `mut_${id}_${now}_${Math.random().toString(36).slice(2, 7)}`;
+        this.localMutationIds.add(mutId);
+
+        const sqlitePath = toSqliteJsonPath(path);
+        const serializedValue = JSON.stringify(value);
+
+        const doc: DocumentRecord<T> = {
+            collection,
+            id,
+            rev,
+            data: updatedData,
+            blobs: {},
+            updatedAt: now,
+        };
+
+        this.localKnownDocs.set(key, { rev, data: updatedData, blobs: doc.blobs });
+
+        this.store.commit(
+            events.DocPathSet({
+                collection,
+                id,
+                path: sqlitePath,
+                value: serializedValue,
+                mutationId: mutId,
+                overlayId: mutId,
+                origin: 'local',
+                updatedAt: now,
+            })
+        );
+
+        const rootProp = path.split('.')[0];
+        const delta = deepFreeze(structuredClone({ [rootProp]: (updatedData as any)[rootProp] })) as Partial<T>;
+
+        this.cdcSubject.next({
+            type: 'update',
+            kind: 'update',
+            collection,
+            id,
+            rev,
+            delta,
+            data: updatedData,
             timestamp: now,
             mutationId: hasExplicitMutationId ? mutId : undefined,
             overlayId: hasExplicitMutationId ? mutId : undefined,
@@ -451,13 +534,15 @@ export class LiveDocEngine {
     }
 
     /**
-     * Commits a batch of RFC 7396 merge patches in a single atomic SQLite commit.
+     * Commits a batch of RFC 7396 merge patches or path-set operations in a single atomic SQLite commit.
      */
     async commitBatchedPatches(
         entries: Array<{
             collection: string;
             id: string;
-            patch: Record<string, unknown>;
+            patch?: Record<string, unknown>;
+            pathSet?: { path: string; value: unknown };
+            pathSets?: Array<{ path: string; value: unknown }>;
             blobs?: BlobMap;
             mutationId?: string;
             overlayId?: string;
@@ -475,7 +560,7 @@ export class LiveDocEngine {
         const cdcToEmit: Array<CDCEvent<any>> = [];
 
         for (const entry of entries) {
-            const { collection, id, patch, blobs, mutationId, overlayId, emitCDC } = entry;
+            const { collection, id, patch, pathSet, pathSets, blobs, mutationId, overlayId, emitCDC } = entry;
             const key = makeDocKey(collection, id);
 
             const rows = this.store.query({
@@ -488,7 +573,18 @@ export class LiveDocEngine {
 
             const existingRow = rows[0];
             const existingData = JSON.parse(existingRow.body);
-            const patchedData = jsonMergePatch<any>(existingData, patch);
+            let patchedData = existingData;
+
+            if (patch) {
+                patchedData = jsonMergePatch<any>(patchedData, patch);
+            }
+
+            const allPathSets = pathSets ?? (pathSet ? [pathSet] : []);
+            for (const ps of allPathSets) {
+                patchedData = setAtPath(patchedData, ps.path, ps.value);
+            }
+
+            patchedData = deepFreeze(structuredClone(patchedData));
             const rev = existingRow.rev + 1;
             const mutId = mutationId || overlayId || `mut_${id}_${now}_${Math.random().toString(36).slice(2, 7)}`;
             this.localMutationIds.add(mutId);
@@ -523,27 +619,45 @@ export class LiveDocEngine {
             this.localKnownDocs.set(key, { rev, data: patchedData, blobs: doc.blobs });
             results.push(doc);
 
-            commitEvents.push(
-                events.DocPatched({
-                    collection,
-                    id,
-                    patch: JSON.stringify(patch),
-                    blobs: blobHashesString,
-                    mutationId: mutId,
-                    overlayId: overlayId ?? mutId,
-                    origin: 'local',
-                    updatedAt: now,
-                })
-            );
+            if (patch) {
+                commitEvents.push(
+                    events.DocPatched({
+                        collection,
+                        id,
+                        patch: JSON.stringify(patch),
+                        blobs: blobHashesString,
+                        mutationId: mutId,
+                        overlayId: overlayId ?? mutId,
+                        origin: 'local',
+                        updatedAt: now,
+                    })
+                );
+            }
+
+            for (const ps of allPathSets) {
+                commitEvents.push(
+                    events.DocPathSet({
+                        collection,
+                        id,
+                        path: toSqliteJsonPath(ps.path),
+                        value: JSON.stringify(ps.value),
+                        mutationId: mutId,
+                        overlayId: overlayId ?? mutId,
+                        origin: 'local',
+                        updatedAt: now,
+                    })
+                );
+            }
 
             if (emitCDC) {
+                const deltaPayload = patch ?? (allPathSets.length > 0 ? { [allPathSets[0].path.split('.')[0]]: (patchedData as any)[allPathSets[0].path.split('.')[0]] } : {});
                 cdcToEmit.push({
                     type: 'update',
                     kind: 'update',
                     collection,
                     id,
                     rev,
-                    delta: patch,
+                    delta: deepFreeze(structuredClone(deltaPayload)),
                     data: patchedData,
                     timestamp: now,
                     mutationId: mutId,
@@ -630,7 +744,14 @@ export class LiveDocEngine {
         }
 
         const row = rows[0];
-        const data = JSON.parse(row.body) as T;
+        let data: T;
+        const known = this.localKnownDocs.get(key);
+        if (known && known.rev === row.rev) {
+            data = known.data;
+        } else {
+            data = deepFreeze(structuredClone(JSON.parse(row.body) as T));
+            this.localKnownDocs.set(key, { rev: row.rev, data, blobs: known?.blobs ?? {} });
+        }
         const blobs: BlobMap = {};
 
         if (row.blobs && row.blobs !== '{}') {
@@ -676,7 +797,15 @@ export class LiveDocEngine {
         }
 
         for (const row of rows) {
-            const data = JSON.parse(row.body) as T;
+            const key = makeDocKey(collection, row.id);
+            let data: T;
+            const known = this.localKnownDocs.get(key);
+            if (known && known.rev === row.rev) {
+                data = known.data;
+            } else {
+                data = deepFreeze(structuredClone(JSON.parse(row.body) as T));
+                this.localKnownDocs.set(key, { rev: row.rev, data, blobs: {} });
+            }
             const doc: DocumentRecord<T> = {
                 collection,
                 id: row.id,

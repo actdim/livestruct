@@ -3,7 +3,7 @@ protocol: along
 protocol_version: "4.5.4"
 slug: engine-correctness-batch
 type: bug
-status: open
+status: in-progress
 priority: medium
 created: 2026-10-31
 updated: 2026-11-01
@@ -32,9 +32,9 @@ Launch position: **5** in the ticket map below. Plan approved by the user on 202
 - REQ-7: Date and typed-array values MUST either round-trip through events or be rejected at `patch()` time with a clear error (no silent `{}`).
 
 ## Acceptance Criteria
-- [ ] Each REQ has a test that failed before its fix (or a recorded "not reproducible after LiveStore move" with the test proving it).
-- [ ] Suite green; `unhandledRejection` spy silent across the whole suite.
-- [ ] CHANGELOG lists behaviour changes.
+- [x] Each REQ has a test that failed before its fix (or a recorded "not reproducible after LiveStore move" with the test proving it).
+- [x] Suite green; `unhandledRejection` spy silent across the whole suite.
+- [x] CHANGELOG lists behaviour changes.
 
 ## Plan
 
@@ -70,9 +70,9 @@ Steps
 9. CHANGELOG: one line per behaviour change (frozen results, strict values, patchPath set semantics, mobx peer/subpath).
 
 Acceptance
-- [ ] Each REQ has a test that failed before its fix (or a recorded "not reproducible after LiveStore move" with the test proving it).
-- [ ] Suite green; `unhandledRejection` spy silent across the whole suite.
-- [ ] CHANGELOG lists behaviour changes.
+- [x] Each REQ has a test that failed before its fix (or a recorded "not reproducible after LiveStore move" with the test proving it).
+- [x] Suite green; `unhandledRejection` spy silent across the whole suite.
+- [x] CHANGELOG lists behaviour changes.
 
 ## Ticket map and launch order
 

@@ -11,6 +11,7 @@ import { mergePatches } from '../engine/patch';
 import { makeDocKey } from '../engine/schema';
 import type { CommitPolicy, LiveDocumentOptions, LiveStructEvent } from './types';
 import type { OverlayChannel } from './overlayChannel';
+import { reportAsync } from './errors';
 
 export interface CommitSchedulerDocumentTarget {
     onCommitSuccess(
@@ -33,6 +34,7 @@ interface PendingPatchEntry {
     readonly id: string;
     readonly docKey: string;
     mergedPatch: Record<string, unknown>;
+    pathSets: Array<{ path: string; value: unknown }>;
     overlayId: string;
     firstQueuedAt: number;
     blobs?: BlobMap;
@@ -74,6 +76,10 @@ export class CommitScheduler {
 
     get errors$(): Observable<Error> {
         return this.errorSubject.asObservable();
+    }
+
+    reportError(err: Error): void {
+        this.errorSubject.next(err);
     }
 
     registerDocument(collection: string, id: string, doc: CommitSchedulerDocumentTarget): void {
@@ -124,6 +130,7 @@ export class CommitScheduler {
                 id,
                 docKey,
                 mergedPatch: mergePatches({}, patch),
+                pathSets: [],
                 overlayId,
                 firstQueuedAt: Date.now(),
                 blobs: blobs ? { ...blobs } : undefined,
@@ -153,14 +160,14 @@ export class CommitScheduler {
         });
 
         if (policy === 'immediate') {
-            void this.commitBatch([docKey], true);
+            reportAsync(this.commitBatch([docKey], true), 'commitScheduler.immediate', this.errorSubject);
         } else {
             // Trailing debounce timer
             if (entry.debounceTimer !== null) {
                 clearTimeout(entry.debounceTimer);
             }
             entry.debounceTimer = setTimeout(() => {
-                void this.commitBatch([docKey]);
+                reportAsync(this.commitBatch([docKey]), 'commitScheduler.debounce', this.errorSubject);
             }, delayMs);
 
             // Bounded maximum wait timer
@@ -168,7 +175,82 @@ export class CommitScheduler {
                 const elapsed = Date.now() - entry.firstQueuedAt;
                 const remaining = Math.max(0, maxWaitMs - elapsed);
                 entry.maxWaitTimer = setTimeout(() => {
-                    void this.commitBatch([docKey]);
+                    reportAsync(this.commitBatch([docKey]), 'commitScheduler.maxWait', this.errorSubject);
+                }, remaining);
+            }
+        }
+
+        return {
+            promise,
+            overlayId: entry.overlayId,
+        };
+    }
+
+    schedulePathSet(
+        collection: string,
+        id: string,
+        path: string,
+        value: unknown,
+        options?: LiveDocumentOptions
+    ): { promise: Promise<void>; overlayId: string } {
+        if (this.isDisposed) {
+            throw new Error(`Cannot schedule patch on disposed CommitScheduler.`);
+        }
+
+        const policy = options?.commitPolicy ?? this.defaultPolicy;
+        const delayMs = options?.commitDelayMs ?? this.defaultDelayMs;
+        const maxWaitMs = options?.maxCommitWaitMs ?? this.defaultMaxWaitMs;
+        const docKey = makeDocKey(collection, id);
+
+        let entry = this.pendingMap.get(docKey);
+        if (!entry) {
+            const overlayId = `mut_ovl_${id}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+            entry = {
+                collection,
+                id,
+                docKey,
+                mergedPatch: {},
+                pathSets: [{ path, value }],
+                overlayId,
+                firstQueuedAt: Date.now(),
+                blobs: undefined,
+                debounceTimer: null,
+                maxWaitTimer: null,
+                deferredList: [],
+            };
+            this.pendingMap.set(docKey, entry);
+        } else {
+            entry.pathSets.push({ path, value });
+        }
+
+        let resolveFn!: () => void;
+        let rejectFn!: (err: unknown) => void;
+        const promise = new Promise<void>((resolve, reject) => {
+            resolveFn = resolve;
+            rejectFn = reject;
+        });
+
+        entry.deferredList.push({
+            resolve: resolveFn,
+            reject: rejectFn,
+            patch: { [path]: value },
+        });
+
+        if (policy === 'immediate') {
+            reportAsync(this.commitBatch([docKey], true), 'commitScheduler.immediate', this.errorSubject);
+        } else {
+            if (entry.debounceTimer !== null) {
+                clearTimeout(entry.debounceTimer);
+            }
+            entry.debounceTimer = setTimeout(() => {
+                reportAsync(this.commitBatch([docKey]), 'commitScheduler.debounce', this.errorSubject);
+            }, delayMs);
+
+            if (entry.maxWaitTimer === null) {
+                const elapsed = Date.now() - entry.firstQueuedAt;
+                const remaining = Math.max(0, maxWaitMs - elapsed);
+                entry.maxWaitTimer = setTimeout(() => {
+                    reportAsync(this.commitBatch([docKey]), 'commitScheduler.maxWait', this.errorSubject);
                 }, remaining);
             }
         }
@@ -215,7 +297,8 @@ export class CommitScheduler {
                     entriesToCommit.map((e) => ({
                         collection: e.collection,
                         id: e.id,
-                        patch: e.mergedPatch,
+                        patch: Object.keys(e.mergedPatch).length > 0 ? e.mergedPatch : undefined,
+                        pathSets: e.pathSets.length > 0 ? e.pathSets : undefined,
                         blobs: e.blobs,
                         overlayId: e.overlayId,
                         emitCDC: false, // Already emitted in doc.patch()

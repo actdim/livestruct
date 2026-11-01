@@ -27,10 +27,11 @@ export interface DocumentRecord<T extends object = Record<string, any>> {
 }
 
 export type CDCEventType = 'insert' | 'update' | 'delete';
+export type CDCEventKind = CDCEventType | 'replace';
 
 export interface CDCEvent<T = unknown> {
     readonly type: CDCEventType;
-    readonly kind?: CDCEventType;
+    readonly kind?: CDCEventKind;
     readonly collection: string;
     readonly id: string;
     readonly rev: number;

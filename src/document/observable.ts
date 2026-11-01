@@ -5,6 +5,7 @@
  */
 
 import type { LiveDocument, ObservableLiveDocument } from './types';
+import { reportAsync } from './errors';
 
 const proxyCache = new WeakMap<LiveDocument<any>, ObservableLiveDocument<any>>();
 
@@ -48,9 +49,11 @@ export function toObservableDocument<T extends object>(
         set(target, prop, value) {
             if (typeof prop === 'string' && !(prop in target)) {
                 // Property mutation triggers document patch asynchronously
-                target.patch({ [prop]: value } as any).catch(() => {
-                    // Deferred errors are routed to target.errors$
-                });
+                reportAsync(
+                    target.patch({ [prop]: value } as any),
+                    'observable.set',
+                    (target as any).errorSubject ?? (target as any).errors$
+                );
                 return true;
             }
             return Reflect.set(target, prop, value);

@@ -178,3 +178,31 @@ export function deleteNestedPath<T, P extends NestedPath<T>>(obj: T, path: P): T
     const segments = path.split('.');
     return deleteIn(obj, segments) as T;
 }
+
+export interface LensDocumentTarget<T extends object = Record<string, any>> {
+    readonly data: Readonly<T>;
+    patchPath<P extends NestedPath<T>>(path: P, value: PathValue<T, P>): Promise<void>;
+}
+
+/**
+ * Creates a lens bound to a LiveDocument property path.
+ * Reads return the current value from doc.data; writes route through doc.patchPath,
+ * never mutating doc.data directly.
+ */
+export function createDocLens<T extends object, P extends NestedPath<T>>(
+    doc: LensDocumentTarget<T>,
+    path: P
+) {
+    return {
+        path,
+        get(): PathValue<T, P> | undefined {
+            return getNestedPath(doc.data, path);
+        },
+        async set(value: PathValue<T, P>): Promise<void> {
+            return doc.patchPath(path, value);
+        },
+    };
+}
+
+export const createLens = createDocLens;
+

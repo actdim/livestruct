@@ -5,6 +5,8 @@
  */
 
 export * from './types';
+export * from './errors';
+export * from './deepFreeze';
 export * from './patchHelper';
 export * from './equal';
 export * from './commitScheduler';

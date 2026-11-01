@@ -13,7 +13,8 @@ import type { CDCEvent } from '../engine/types';
 import { jsonMergePatch, mergePatches } from '../engine/patch';
 import type { NestedPath, PathValue } from '../lens/index';
 import type { LiveDocument, LiveDocumentOptions, LiveStructEvent, PatchPayload } from './types';
-import { buildPathPatch } from './patchHelper';
+import { assertJsonSafe, setAtPath, buildPathPatch } from './patchHelper';
+import { deepFreeze } from './deepFreeze';
 import { deepEquals } from './equal';
 import { CommitScheduler, type CommitSchedulerDocumentTarget } from './commitScheduler';
 import type { OverlayChannel, OverlayDocumentTarget } from './overlayChannel';
@@ -35,6 +36,7 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
     private committedData: Readonly<T>;
     private committedRev: number;
     private localPendingPatch: Record<string, unknown> | null = null;
+    private localPendingPathSets: Array<{ path: string; value: unknown }> = [];
     private remoteTentativePatch: Record<string, unknown> | null = null;
     private remoteOverlayId: string | null = null;
     private readonly pendingOverlayIds = new Set<string>();
@@ -73,7 +75,7 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
         this.commitScheduler = commitScheduler ?? new CommitScheduler(rawEngine as any);
         this.overlayChannel = overlayChannel;
 
-        this.committedData = Object.freeze(jsonMergePatch<T>({}, initialData)) as unknown as T;
+        this.committedData = deepFreeze(structuredClone(initialData)) as unknown as T;
         this.currentData = this.committedData;
         this.stateSubject = new BehaviorSubject<Readonly<T>>(this.currentData);
 
@@ -94,6 +96,10 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
             .subscribe((event) => {
                 this.handleCDCEvent(event as CDCEvent<T>);
             });
+    }
+
+    get subscriptionCount(): number {
+        return this.disposed || this.cdcSubscription.closed ? 0 : 1;
     }
 
     private handleCDCEvent(event: CDCEvent<T>): void {
@@ -120,10 +126,17 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
             }
 
             const delta = (event.delta || event.data) as Partial<T>;
-            if (event.type === 'insert') {
-                this.committedData = Object.freeze(jsonMergePatch<T>({}, delta)) as unknown as T;
+            if (event.kind === 'replace' || (event as any).type === 'replace') {
+                const replacement = (event.data || delta) as T;
+                this.committedData = deepFreeze(structuredClone(replacement)) as unknown as T;
+            } else if (event.type === 'insert') {
+                this.committedData = deepFreeze(
+                    structuredClone(jsonMergePatch<T>({} as T, delta))
+                ) as unknown as T;
             } else {
-                this.committedData = Object.freeze(jsonMergePatch<T>(this.committedData, delta)) as unknown as T;
+                this.committedData = deepFreeze(
+                    structuredClone(jsonMergePatch<T>(this.committedData, delta))
+                ) as unknown as T;
             }
 
             if (event.rev !== undefined && event.rev > this.committedRev) {
@@ -132,17 +145,22 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
                 this.committedRev++;
             }
 
-            // REBASE (REQ-5):
+            // REBASE:
             // view = remoteCommitted with local pending patches re-applied on top.
-            // Subscribers notified only when the view changes (structural equality).
             this.recomputeView(true);
         }
     }
 
     private recomputeView(notifyIfChanged: boolean): void {
         let nextData: T;
-        if (this.localPendingPatch !== null) {
-            nextData = jsonMergePatch<T>(this.committedData, this.localPendingPatch);
+        if (this.localPendingPatch !== null || this.localPendingPathSets.length > 0) {
+            nextData = this.committedData as unknown as T;
+            if (this.localPendingPatch !== null) {
+                nextData = jsonMergePatch<T>(nextData, this.localPendingPatch);
+            }
+            for (const ps of this.localPendingPathSets) {
+                nextData = setAtPath(nextData as any, ps.path, ps.value);
+            }
         } else if (this.remoteTentativePatch !== null) {
             nextData = jsonMergePatch<T>(this.committedData, this.remoteTentativePatch);
         } else {
@@ -150,7 +168,7 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
         }
 
         if (!deepEquals(this.currentData, nextData)) {
-            this.currentData = Object.freeze(nextData) as unknown as T;
+            this.currentData = deepFreeze(nextData) as unknown as T;
             if (notifyIfChanged) {
                 this.stateSubject.next(this.currentData);
                 this.atom.reportChanged();
@@ -185,11 +203,11 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
     }
 
     get isPending(): boolean {
-        return this.localPendingPatch !== null;
+        return this.localPendingPatch !== null || this.localPendingPathSets.length > 0;
     }
 
     get isTentative(): boolean {
-        return this.remoteTentativePatch !== null && this.localPendingPatch === null;
+        return this.remoteTentativePatch !== null && !this.isPending;
     }
 
     async patch(partial: PatchPayload<T>): Promise<void> {
@@ -197,6 +215,7 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
             throw new Error(`Cannot patch disposed LiveDocument '${this.id}'.`);
         }
 
+        assertJsonSafe(partial);
         const patchRecord = partial as Record<string, unknown>;
 
         // 1. Update local pending patch
@@ -212,10 +231,7 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
 
         // 2. Optimistic local update: instant data update, emit on $ and MobX atom
         this.currentRev++;
-        const nextData = Object.freeze(jsonMergePatch<T>(this.committedData, this.localPendingPatch)) as unknown as T;
-        this.currentData = nextData;
-        this.stateSubject.next(this.currentData);
-        this.atom.reportChanged();
+        this.recomputeView(true);
 
         // 3. Queue deferred commit with CommitScheduler
         const { promise, overlayId } = this.commitScheduler.schedulePatch(
@@ -227,14 +243,15 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
         );
         this.pendingOverlayIds.add(overlayId);
 
-        // 4. Emit local CDC immediately without waiting for commit
+        // 4. Emit local CDC immediately without waiting for commit (isolated cloned delta)
+        const isolatedDelta = deepFreeze(structuredClone(partial)) as Partial<T>;
         this.rawEngine.emitCDC({
             type: 'update',
             kind: 'update',
             collection: this.collectionName,
             id: this.id,
             rev: this.currentRev,
-            delta: partial as Partial<T>,
+            delta: isolatedDelta,
             data: this.currentData,
             timestamp: Date.now(),
             mutationId: overlayId,
@@ -268,8 +285,75 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
         if (this.disposed) {
             throw new Error(`Cannot patch disposed LiveDocument '${this.id}'.`);
         }
-        const patch = buildPathPatch(this.currentData, path, value);
-        return this.patch(patch as PatchPayload<T>);
+
+        const pathStr = String(path);
+        assertJsonSafe(value, pathStr);
+
+        this.localPendingPathSets.push({ path: pathStr, value });
+        this.remoteTentativePatch = null;
+        this.remoteOverlayId = null;
+
+        this.currentRev++;
+        this.recomputeView(true);
+
+        const { promise, overlayId } = this.commitScheduler.schedulePathSet(
+            this.collectionName,
+            this.id,
+            pathStr,
+            value,
+            this.options
+        );
+        this.pendingOverlayIds.add(overlayId);
+
+        const rootProp = pathStr.split('.')[0];
+        const delta = deepFreeze(
+            structuredClone({ [rootProp]: (this.currentData as any)[rootProp] })
+        ) as Partial<T>;
+
+        this.rawEngine.emitCDC({
+            type: 'update',
+            kind: 'update',
+            collection: this.collectionName,
+            id: this.id,
+            rev: this.currentRev,
+            delta,
+            data: this.currentData,
+            timestamp: Date.now(),
+            mutationId: overlayId,
+            overlayId,
+            origin: 'local',
+        });
+
+        this.onEvent?.({
+            type: 'local_patch',
+            collection: this.collectionName,
+            id: this.id,
+            patch: { [pathStr]: value },
+            timestamp: Date.now(),
+        });
+
+        return promise;
+    }
+
+    /**
+     * Completely replaces the committed document data, rebasing any pending local patches on top.
+     */
+    async replace(value: T): Promise<void> {
+        if (this.disposed) {
+            throw new Error(`Cannot replace disposed LiveDocument '${this.id}'.`);
+        }
+
+        assertJsonSafe(value);
+        this.committedData = deepFreeze(structuredClone(value)) as unknown as T;
+        this.currentRev++;
+        this.recomputeView(true);
+
+        const docRecord = await this.rawEngine.updateDoc<T>(
+            this.collectionName,
+            this.id,
+            value
+        );
+        this.committedRev = docRecord.rev;
     }
 
     async flush(): Promise<void> {
@@ -291,12 +375,13 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
 
         this.pendingOverlayIds.delete(overlayId);
         this.committedRev = newRev;
-        this.committedData = Object.freeze(committedData) as unknown as T;
+        this.committedData = deepFreeze(structuredClone(committedData)) as unknown as T;
 
         if (this.commitScheduler.hasPending(this.collectionName, this.id)) {
             this.localPendingPatch = this.commitScheduler.getPendingPatch(this.collectionName, this.id);
         } else {
             this.localPendingPatch = null;
+            this.localPendingPathSets = [];
         }
 
         this.recomputeView(true);
@@ -311,6 +396,7 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
             this.localPendingPatch = this.commitScheduler.getPendingPatch(this.collectionName, this.id);
         } else {
             this.localPendingPatch = null;
+            this.localPendingPathSets = [];
         }
 
         this.recomputeView(true);
