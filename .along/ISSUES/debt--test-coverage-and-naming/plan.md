@@ -32,9 +32,9 @@ Launch position: **9** in the ticket map below. Plan approved by the user on 202
 - REQ-4: No `any` in `src/` (eslint `no-explicit-any` as error); `PatchPayload<T>` recursive and strict with `patchUnchecked()` escape hatch.
 
 ## Acceptance Criteria
-- [ ] `grep -rn "setTimeout(resolve" tests` empty.
-- [ ] Playwright suite green locally (`pnpm test:browser`), documented in `docs/topic--setup-and-workflow.md`.
-- [ ] `pnpm lint` with `no-explicit-any: error` green; livestruct-demo and msgmesh-store compile against strict `PatchPayload`.
+- [x] `grep -rn "setTimeout(resolve" tests` empty.
+- [x] Playwright suite green locally (`pnpm test:browser`), documented in `docs/topic--setup-and-workflow.md`.
+- [x] `pnpm lint` with `no-explicit-any: error` green; livestruct-demo and msgmesh-store compile against strict `PatchPayload`.
 
 ## Plan
 
@@ -64,9 +64,9 @@ Steps
 7. Docs: `docs/topic--setup-and-workflow.md` section "Browser tests" (install `pnpm exec playwright install chromium`, run `pnpm test:browser`).
 
 Acceptance
-- [ ] `grep -rn "setTimeout(resolve" tests` empty.
-- [ ] Playwright suite green locally (`pnpm test:browser`), documented in `docs/topic--setup-and-workflow.md`.
-- [ ] `pnpm lint` with `no-explicit-any: error` green; livestruct-demo and msgmesh-store compile against strict `PatchPayload`.
+- [x] `grep -rn "setTimeout(resolve" tests` empty.
+- [x] Playwright suite green locally (`pnpm test:browser`), documented in `docs/topic--setup-and-workflow.md`.
+- [x] `pnpm lint` with `no-explicit-any: error` green; livestruct-demo and msgmesh-store compile against strict `PatchPayload`.
 
 ## Ticket map and launch order
 
