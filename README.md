@@ -182,3 +182,28 @@ When crossing worker boundaries or decoupling modules:
 ```bash
 pnpm add @actdim/livestruct @actdim/msgmesh @actdim/utico mobx rxjs
 ```
+
+LiveStore and Effect are exact-version peers: `@livestore/livestore@0.5.0`, `@livestore/adapter-web@0.5.0`, `effect@4.0.3` (see the Integration Guide below).
+
+---
+
+## 9. Documentation
+
+- Documentation site: https://actdim.github.io/livestruct/
+- Live demo: https://actdim.github.io/livestruct-demo/
+
+Knowledge Base topics:
+
+1. [Overview & Key Advantages](docs/topic--01-overview-and-advantages.md) - what LiveStruct is, problems solved, when to use it, relation to LiveStore, msgmesh and dynstruct.
+2. [Core Concepts](docs/topic--02-core-concepts.md) - store, collections, documents, commit policies, overlays, lenses, JSON safety, MobX, engine and CDC, blobs.
+3. [Architecture & Wiring](docs/topic--03-architecture-and-wiring.md) - runtime topology (UI context, leader worker, SharedWorker), adapter selection, data-flow diagrams.
+4. [Integration Guide](docs/topic--04-integration-guide.md) - install, peers, Vite worker config, store setup, msgmesh, React/MobX, testing in Node.
+5. [API Reference](docs/topic--05-api-reference.md) - every public export per entry point.
+
+Reference and design notes:
+
+- [Architecture & Engine Design](docs/topic--architecture.md) - `docs` table, materializers, BlobStore, lazy commits and overlays in depth.
+- [LiveStore 0.5.0 Integration & Spike](docs/topic--livestore-integration.md) - measured evidence behind the design.
+- [Domain Model](docs/topic--domain-model.md) - records, events, document states, CDC contract.
+- [Setup & Workflow](docs/topic--setup-and-workflow.md) - developing and testing the package itself.
+- [License](docs/topic--license.md) - MIT.

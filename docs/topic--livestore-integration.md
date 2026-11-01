@@ -223,3 +223,15 @@ The client bundle increase (+164 kB gzip) is attributable to the LiveStore clien
    `doc.patch()` writes immediately to a local in-memory overlay for instant O(1) reads, while scheduling a debounced `store.commit()` to SQLite to coalesce fast drag/typing events into a single transaction.
 5. **Session Identity**:
    Require passing an explicit unique `sessionId` on engine initialization to ensure proper isolation in same-origin multi-iframe topologies.
+
+---
+
+## Implementation Notes (as shipped)
+
+The decisions above were recorded during the spike. The shipped engine (`src/engine/schema.ts`, `src/engine/liveStoreEngine.ts`) refines them as follows:
+
+- **Table shape**: the `docs` table uses a composite primary key `key = makeDocKey(collection, id)` (`` `${collection}\u0001${id}` ``) and camelCase columns: `collection`, `id`, `body`, `rev`, `updatedAt`, `blobs`, `mutationId`, `overlayId`, `origin`, plus the index `idx_docs_collection_updatedAt`. The snake_case `mutation_id` naming used in the spike notes (Q7 and Decision 1) is not what shipped.
+- **Events**: five synced events under the `livestruct.v1.` namespace - `DocInserted`, `DocReplaced`, `DocPatched` (`json_patch`), `DocPathSet` (`json_set`), `DocDeleted`.
+- **Session identity**: `sessionId` is optional in `LiveStructConfig`; when omitted, `resolveLiveStoreAdapter` generates one (`<name>-<random>-<time>`). Passing an explicit unique id per context is still recommended.
+- **Worker shipping**: both the shipped `@actdim/livestruct/worker` entry and an app-local worker that imports `schema` from `@actdim/livestruct/engine` (as `livestruct-demo` does) are supported.
+- **Lazy commits and overlays**: Decision 4 is implemented by `CommitScheduler` and `OverlayChannel`; see [Architecture & Engine Design](./topic--architecture.md), section 7, and [Architecture & Wiring](./topic--03-architecture-and-wiring.md).

@@ -44,4 +44,8 @@ Runtime hooks enforce these where installed; elsewhere (`along doctor` shows the
 
 ## Project specifics
 
-- Add project conventions here.
+- **Package**: `@actdim/livestruct` - reactive document and record abstraction over LiveStore (reactive SQLite and event sourcing): `createLiveStruct` store, `LiveCollection` / `LiveDocument` with committed, pending and remote-overlay layers, `CommitScheduler`, `OverlayChannel`, typed lenses, and the `LiveDocEngine` / `LiveEngineAccess` engine with a CDC stream.
+- **Entry points**: `.` (`src/index.ts`), `./engine`, `./worker`, `./shared-worker` (plus `./lens`, `./document` via `./*`). ESM only. Peers pinned to the mempart catalog: `@livestore/livestore` / `@livestore/adapter-web` `0.5.0`, `effect` `4.0.3`; also `mobx`, `rxjs`, `@actdim/utico`, optional `@actdim/msgmesh`.
+- **Commands** (package folder): `pnpm run build`, `pnpm run typecheck`, `pnpm run test` (Vitest node), `pnpm run test:browser` (Playwright), `pnpm run docs:build` (VitePress, published to https://actdim.github.io/livestruct/ by `.github/workflows/pages.yml`).
+- **Knowledge Base**: `docs/INDEX.md`; regenerate `docs/INDEX.md`, `llms.txt` and `llms-full.txt` with `along kb-sync <absolute package path>` after doc changes.
+- **Versioning**: submodule of the mempart pnpm monorepo under one unified version; never bump `package.json` here in isolation (mempart `pnpm run version:sync <version>` only).

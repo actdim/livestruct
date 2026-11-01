@@ -191,6 +191,31 @@ When crossing worker boundaries or decoupling modules:
 pnpm add @actdim/livestruct @actdim/msgmesh @actdim/utico mobx rxjs
 ```
 
+LiveStore and Effect are exact-version peers: `@livestore/livestore@0.5.0`, `@livestore/adapter-web@0.5.0`, `effect@4.0.3` (see the Integration Guide below).
+
+---
+
+## 9. Documentation
+
+- Documentation site: https://actdim.github.io/livestruct/
+- Live demo: https://actdim.github.io/livestruct-demo/
+
+Knowledge Base topics:
+
+1. [Overview & Key Advantages](docs/topic--01-overview-and-advantages.md) - what LiveStruct is, problems solved, when to use it, relation to LiveStore, msgmesh and dynstruct.
+2. [Core Concepts](docs/topic--02-core-concepts.md) - store, collections, documents, commit policies, overlays, lenses, JSON safety, MobX, engine and CDC, blobs.
+3. [Architecture & Wiring](docs/topic--03-architecture-and-wiring.md) - runtime topology (UI context, leader worker, SharedWorker), adapter selection, data-flow diagrams.
+4. [Integration Guide](docs/topic--04-integration-guide.md) - install, peers, Vite worker config, store setup, msgmesh, React/MobX, testing in Node.
+5. [API Reference](docs/topic--05-api-reference.md) - every public export per entry point.
+
+Reference and design notes:
+
+- [Architecture & Engine Design](docs/topic--architecture.md) - `docs` table, materializers, BlobStore, lazy commits and overlays in depth.
+- [LiveStore 0.5.0 Integration & Spike](docs/topic--livestore-integration.md) - measured evidence behind the design.
+- [Domain Model](docs/topic--domain-model.md) - records, events, document states, CDC contract.
+- [Setup & Workflow](docs/topic--setup-and-workflow.md) - developing and testing the package itself.
+- [License](docs/topic--license.md) - MIT.
+
 ---
 
 ## Document: AGENTS.md (Agent Conventions & Protocol)
@@ -241,7 +266,1289 @@ Runtime hooks enforce these where installed; elsewhere (`along doctor` shows the
 
 ## Project specifics
 
-- Add project conventions here.
+- **Package**: `@actdim/livestruct` - reactive document and record abstraction over LiveStore (reactive SQLite and event sourcing): `createLiveStruct` store, `LiveCollection` / `LiveDocument` with committed, pending and remote-overlay layers, `CommitScheduler`, `OverlayChannel`, typed lenses, and the `LiveDocEngine` / `LiveEngineAccess` engine with a CDC stream.
+- **Entry points**: `.` (`src/index.ts`), `./engine`, `./worker`, `./shared-worker` (plus `./lens`, `./document` via `./*`). ESM only. Peers pinned to the mempart catalog: `@livestore/livestore` / `@livestore/adapter-web` `0.5.0`, `effect` `4.0.3`; also `mobx`, `rxjs`, `@actdim/utico`, optional `@actdim/msgmesh`.
+- **Commands** (package folder): `pnpm run build`, `pnpm run typecheck`, `pnpm run test` (Vitest node), `pnpm run test:browser` (Playwright), `pnpm run docs:build` (VitePress, published to https://actdim.github.io/livestruct/ by `.github/workflows/pages.yml`).
+- **Knowledge Base**: `docs/INDEX.md`; regenerate `docs/INDEX.md`, `llms.txt` and `llms-full.txt` with `along kb-sync <absolute package path>` after doc changes.
+- **Versioning**: submodule of the mempart pnpm monorepo under one unified version; never bump `package.json` here in isolation (mempart `pnpm run version:sync <version>` only).
+
+---
+
+## Document: docs/topic--01-overview-and-advantages.md (Overview & Key Advantages)
+
+# Overview & Key Advantages
+
+[<- Back to README](../README.md) | [Next: 02. Core Concepts ->](./topic--02-core-concepts.md)
+
+---
+
+## What is @actdim/livestruct?
+
+**`@actdim/livestruct`** is a reactive document and record layer built on top of [LiveStore](https://livestore.dev) (`@livestore/livestore` 0.5.0: reactive SQLite WASM plus event-sourcing). It lets a TypeScript application work with **hierarchical JSON documents** grouped into **collections**, while LiveStore takes care of durable storage (OPFS), the eventlog, and multi-tab synchronization.
+
+One call gives you a ready store:
+
+```typescript
+import { createLiveStruct } from '@actdim/livestruct';
+
+const store = await createLiveStruct({ name: 'cad_workspace' });
+const parts = await store.collection<{ id: string; name: string; color: string }>('parts');
+const doc = await parts.create('part-101', { id: 'part-101', name: 'Bracket A', color: 'blue' });
+
+doc.$.subscribe((state) => console.log(state.color));
+void doc.patch({ color: 'red' }); // doc.data is updated synchronously
+await doc.flush();                // durable SQLite commit
+```
+
+The library provides:
+
+- **Document API with RxDB-like ergonomics** - `store.collection(name)`, `collection.get(id)` / `create` / `delete` / `find`, `doc.patch(...)`, `doc.patchPath(...)`, `doc.replace(...)`.
+- **A built-in universal schema** - one `docs` SQLite table and five `livestruct.v1.*` events with SQL materializers (`json_patch`, `json_set`). No Effect schema, events or materializers have to be authored by the application.
+- **Transparent lazy commits** - mutations land in memory instantly; a `CommitScheduler` coalesces them into batched SQLite commits (`commitDelayMs` 150 ms, `maxCommitWaitMs` 1000 ms by default).
+- **Live tentative overlays** - uncommitted values stream to other same-origin tabs and iframes over a `BroadcastChannel` at most once per animation frame, without touching the eventlog (`doc.isTentative`).
+- **Reactivity for both RxJS and MobX** - `doc.$` is an RxJS `BehaviorSubject`-backed stream; `doc.data` reports to a MobX atom, so MobX `observer` components and `@actdim/dynstruct` views re-render automatically.
+- **Off-main-thread persistence** - an OPFS leader worker (`@actdim/livestruct/worker`) and a SharedWorker (`@actdim/livestruct/shared-worker`) host the persistent SQLite database; each tab keeps an in-memory SQLite mirror for synchronous reads.
+- **Content-addressed binary blobs** - `Uint8Array` / `Float32Array` payloads live in a `BlobStore` (OPFS directory `livestruct-blobs/<sha256>`), so events carry only hashes.
+- **A low-level escape hatch** - `doc.engine` / `store.engine` expose raw read-only SQL (`queryRaw`), raw commits (`commitRaw`) and a Change Data Capture stream (`cdc$`).
+
+---
+
+## The Problems It Solves
+
+Raw LiveStore is a strong foundation (embedded SQLite, OPFS persistence, event-sourcing, cross-tab sync), but using it directly from interactive UI code creates friction:
+
+| Problem with raw LiveStore in UI code | How LiveStruct addresses it |
+|---|---|
+| Every field update needs an event definition, an Effect schema, a SQL materializer and a query subscription (CQRS boilerplate). | A universal `docs` table and generic `DocInserted` / `DocPatched` / `DocPathSet` / `DocReplaced` / `DocDeleted` events cover any JSON document. |
+| UI entities (cards, CAD shapes, GIS features) are trees; SQLite is flat rows. | Documents are JSON bodies merged with RFC 7396 merge patches (`json_patch(body, ?)`), plus type-safe dot paths (`NestedPath<T>`). |
+| 60-120 Hz interactions (dragging, sliders, typing) cannot each become a permanent event without bloating the log and costing frame time. | `doc.patch()` is synchronous in memory; the `CommitScheduler` debounces and batches commits; other contexts see tentative overlays instead of committed events. |
+| Same-origin iframes share `sessionStorage`, so LiveStore sessions collide. | Each `createLiveStruct` call resolves an explicit `sessionId` (generated if omitted). |
+| LiveStore defaults register a `beforeunload` prompt and devtools channels on the host page. | LiveStruct defaults to `confirmUnsavedChanges: false` and `disableDevtools: true`. |
+| Binary geometry in event args bloats the eventlog forever. | Blobs are stored out-of-band and referenced by SHA-256 hash. |
+
+---
+
+## When to Use It
+
+Use `@actdim/livestruct` when:
+
+- The application is **local-first**: data must survive reloads (OPFS) and stay consistent across several tabs or same-origin iframes.
+- Data is naturally **document-shaped** (nested objects keyed by id) rather than relational.
+- The UI performs **high-frequency edits** (canvas editors, CAD/GIS tools, property inspectors) that must feel instant but still persist.
+- You want **MobX or RxJS reactivity** on persisted records without writing a sync layer.
+
+Consider raw LiveStore (or a different store) when you need custom relational tables with hand-written SQL materializers, server-side sync semantics beyond what the generic `docs` table provides, or when documents are not JSON-safe (LiveStruct rejects `Date`, `Map`, `Set`, class instances, `NaN`, typed arrays inside document bodies - see [Core Concepts](./topic--02-core-concepts.md), section "JSON Safety").
+
+---
+
+## Key Advantages
+
+1. **Zero schema authoring** - the built-in `schema` (exported from `@actdim/livestruct/engine`) is all a worker needs: `makeWorker({ schema })`.
+2. **Instant local writes** - `doc.patch()` updates `doc.data`, emits on `doc.$`, notifies the MobX atom and emits local CDC before any SQLite work happens.
+3. **Durability on demand** - the Promise returned by `doc.patch()` resolves only after the commit lands in SQLite; `doc.flush()`, `collection.flush()` and `store.flush()` force it. Pending data is also flushed on `pagehide`, `visibilitychange` (hidden) and `store.close()`.
+4. **Rebase instead of overwrite** - when a remote commit arrives, the view is recomputed as `remoteCommitted + localPendingPatches`; notifications are suppressed if the result is structurally equal (`deepEquals`).
+5. **Failure is observable** - deferred commit errors reject the pending Promises, roll back the uncommitted patch, and are emitted on `doc.errors$`, `collection.errors$` and `store.errors$`.
+6. **Diagnostics built in** - `store.events$` / `doc.events$` stream `local_patch`, `overlay_sent`, `overlay_received`, `commit` and `remote_commit` events (the demo's telemetry panel is built on them).
+7. **Testable in Node** - outside the browser (or with `forceMemory: true`) the engine uses LiveStore's in-memory adapter and an in-memory `BlobStore`, so the whole API runs in Vitest.
+
+---
+
+## Relation to Other Packages
+
+| Package | Relation |
+|---|---|
+| **LiveStore** (`@livestore/livestore`, `@livestore/adapter-web`) | Required peer. LiveStruct is a layer over it: storage, eventlog, leader election and cross-tab sync are LiveStore's; documents, lazy commits, overlays and the CDC stream are LiveStruct's. Details: [LiveStore Integration](./topic--livestore-integration.md). |
+| **`effect`** | Required peer (pinned `4.0.3`); used by the built-in schema (`Schema.Struct`) and by LiveStore itself. |
+| **`mobx`**, **`rxjs`** | Required peers. Every `LiveDocument` owns a MobX atom (`createAtom`) and RxJS subjects. |
+| **`@actdim/utico`** | Required peer of the package (shared monorepo utility layer). |
+| **`@actdim/msgmesh`** | Optional peer. LiveStruct itself does not import msgmesh; applications put a typed `MsgBus` next to the store for commands and ephemeral signals (the demo creates one with `createMsgBus` from `@actdim/msgmesh/core`). See [Integration Guide](./topic--04-integration-guide.md), Step 6. |
+| **`@actdim/msgmesh-store`** | Not a dependency. The README describes it as the place to bridge `engine.cdc$` into typed bus channels; any such bridge subscribes to the public `cdc$` stream. |
+| **`@actdim/dynstruct`** | Not a dependency. Dynstruct components are MobX-reactive, so reading `doc.data` (or a `toObservableDocument` proxy) inside a dynstruct view re-renders it when the document changes. |
+
+---
+
+## Package Entry Points
+
+| Import path | Source | Contents |
+|---|---|---|
+| `@actdim/livestruct` | `src/index.ts` | `createLiveStruct` plus everything from the engine, lens and document modules. |
+| `@actdim/livestruct/engine` | `src/engine.ts` | Engine, schema, blob store, storage adapters, plus re-exports of the document and lens modules. |
+| `@actdim/livestruct/document` | `src/document.ts` | Document and collection implementation, scheduler, overlay channel, helpers. |
+| `@actdim/livestruct/lens` | `src/lens.ts` | Path types and immutable path helpers. |
+| `@actdim/livestruct/worker` | `src/worker.ts` | Dedicated leader worker script (`makeWorker({ schema })`). |
+| `@actdim/livestruct/shared-worker` | `src/shared-worker.ts` | SharedWorker script (re-hosts `@livestore/adapter-web/shared-worker`). |
+
+The `document` and `lens` paths resolve through the `./*` wildcard export. The full per-symbol list is in the [API Reference](./topic--05-api-reference.md).
+
+---
+
+[<- Back to README](../README.md) | [Next: 02. Core Concepts ->](./topic--02-core-concepts.md)
+
+---
+
+## Document: docs/topic--02-core-concepts.md (Core Concepts)
+
+# Core Concepts
+
+[<- Back to 01. Overview](./topic--01-overview-and-advantages.md) | [Next: 03. Architecture & Wiring ->](./topic--03-architecture-and-wiring.md)
+
+---
+
+LiveStruct has a small set of abstractions, layered from the top (what UI code touches) to the bottom (what talks to LiveStore):
+
+| Layer | Abstraction | Source |
+|---|---|---|
+| Store | `LiveStoreInstance` created by `createLiveStruct(config)` | `src/index.ts`, `src/document/types.ts` |
+| Collection | `LiveCollection<T>` (`LiveCollectionImpl`) | `src/document/liveCollection.ts` |
+| Document | `LiveDocument<T>` (`LiveDocumentImpl`) | `src/document/liveDocument.ts` |
+| Paths | `NestedPath<T>`, `PathValue<T, P>`, lens helpers | `src/lens/` |
+| Write pipeline | `CommitScheduler`, `OverlayChannel` | `src/document/commitScheduler.ts`, `src/document/overlayChannel.ts` |
+| Engine | `LiveDocEngine`, `LiveEngineAccess<T>`, `CDCEvent<T>` | `src/engine/liveStoreEngine.ts`, `src/engine/types.ts` |
+| Storage | built-in `schema`, `BlobStore`, adapter resolution | `src/engine/schema.ts`, `src/engine/blobStore.ts`, `src/engine/adapter.ts` |
+
+---
+
+## 1. The Store (`createLiveStruct`)
+
+`createLiveStruct(config: LiveStructConfig): Promise<LiveStoreInstance>` creates the engine (and the underlying LiveStore), one shared `OverlayChannel`, one shared `CommitScheduler`, and registers `pagehide` / `visibilitychange` flush listeners.
+
+```typescript
+import { createLiveStruct, type LiveStructConfig } from '@actdim/livestruct';
+
+const config: LiveStructConfig = {
+    name: 'cad_store',          // LiveStore storeId and overlay channel id
+    sessionId: `session_${crypto.randomUUID()}`, // unique per tab/iframe
+    commitPolicy: 'lazy',       // 'lazy' (default) | 'immediate'
+    commitDelayMs: 150,         // trailing debounce (default 150)
+    maxCommitWaitMs: 1000,      // upper bound (default 1000)
+    overlayTtlMs: 1500,         // tentative overlay lifetime (default 1500)
+};
+
+const store = await createLiveStruct(config);
+console.log(store.storageMode); // 'persisted' | 'single-tab' | 'in-memory'
+```
+
+`LiveStructConfig` fields:
+
+| Field | Default | Meaning |
+|---|---|---|
+| `name` | required | LiveStore `storeId`; also names the overlay `BroadcastChannel` (`livestruct:<name>:overlay`). |
+| `storagePath` | - | `':memory:'` forces the in-memory adapter; also the legacy v1 file path (default `<name>.db`). |
+| `forceMemory` | `false` | Always use the in-memory LiveStore adapter and in-memory blob store. |
+| `sessionId` | generated | LiveStore session id; also the overlay sender id. Pass a unique value per same-origin context. |
+| `disableDevtools` | `true` (engine default) | Passed to `createStorePromise`. |
+| `confirmUnsavedChanges` | `false` (engine default) | Passed to `createStorePromise`; `false` avoids a `beforeunload` prompt on the host page. |
+| `worker` | - | Dedicated worker constructor (for example from a `?worker` import). |
+| `sharedWorker` | - | SharedWorker constructor (for example from a `?sharedworker` import). |
+| `commitPolicy` | `'lazy'` | Global commit policy. |
+| `commitDelayMs` | `150` | Trailing debounce window. |
+| `maxCommitWaitMs` | `1000` | Maximum time a patch may wait before it is committed. |
+| `overlayTtlMs` | `1500` | How long a received tentative overlay survives without updates. |
+| `disableOverlay` | `false` | Disable `BroadcastChannel` overlay sharing. |
+
+`LiveStoreInstance` members: `engine`, `storageMode`, `errors$`, `events$`, `collection(name, options?)`, `flush()`, `close()`.
+
+`store.collection(name)` caches collections by name; calling it twice returns the same instance unless it was disposed.
+
+---
+
+## 2. Collections
+
+A `LiveCollection<T>` is a named group of documents stored in the shared `docs` table (rows are keyed by `makeDocKey(collection, id)`, that is `` `${collection}\u0001${id}` ``).
+
+```typescript
+interface Shape {
+    id: string;
+    name: string;
+    x: number;
+    y: number;
+    style?: { fill?: string; stroke?: string };
+}
+
+const shapes = await store.collection<Shape>('shapes');
+
+const rect = await shapes.create('rect-1', { id: 'rect-1', name: 'Rect', x: 10, y: 20 });
+const same = await shapes.get('rect-1');          // cached instance (same object as rect)
+const missing = await shapes.get('nope');         // null
+const wide = await shapes.find((s) => s.x > 100); // predicate over document data
+await shapes.delete('rect-0');                    // deletes the row, disposes a cached document
+
+shapes.query$.subscribe((docs) => console.log('count', docs.length));
+```
+
+Behavior grounded in `LiveCollectionImpl`:
+
+- `get(id)` returns the cached `LiveDocument` if it is alive, deduplicates concurrent loads of the same id, and returns `null` when the row does not exist.
+- `create(id, data)` validates `data` with `assertJsonSafe`, throws if the id already exists (`Document with id '...' already exists in collection '...'`), and resolves after the insert is committed.
+- `find(predicate?)` queries all rows of the collection; without a predicate it also disposes cached documents whose rows disappeared.
+- `query$` is a `BehaviorSubject`-backed stream of all documents; it is refreshed on every CDC event of the collection (refreshes are coalesced while one is in flight).
+- `flush()` commits all pending patches of this collection; `subscriptionCount` counts the collection's CDC subscription plus its live documents.
+- `dispose()` disposes all cached documents and completes `query$` and `errors$`.
+
+---
+
+## 3. Documents
+
+`LiveDocument<T>` is the central object. It keeps three layers of state:
+
+```text
+committedData   - last state known to be in SQLite (frozen)
++ localPending  - this context's uncommitted merge patch and path sets
++ remoteOverlay - another context's tentative patch (only when nothing is pending locally)
+= data          - the frozen snapshot you read
+```
+
+### 3.1 Reading
+
+```typescript
+const snapshot = rect.data;        // Readonly<Shape>, deeply frozen
+rect.$.subscribe((s) => draw(s));  // emits current value, then each verified change
+rect.isPending;                    // true while local patches are not yet committed
+rect.isTentative;                  // true while showing another context's uncommitted overlay
+```
+
+`doc.data` is deeply frozen (`deepFreeze`); mutate through the API, never in place. Reading `doc.data` also calls `reportObserved()` on the document's MobX atom.
+
+### 3.2 Writing
+
+```typescript
+// RFC 7396 merge patch: nested objects merge, arrays replace, null deletes a key
+void rect.patch({ x: 120, style: { fill: 'red' } });
+void rect.patch({ style: { stroke: null } });
+
+// Type-checked path write (SET semantics on the target subtree)
+void rect.patchPath('style.fill', 'blue');
+
+// Untyped escape hatch
+void rect.patchUnchecked({ dynamicKey: 42 });
+
+// Replace the committed body; pending local patches are re-applied on top
+await rect.replace({ id: 'rect-1', name: 'Rect', x: 0, y: 0 });
+
+// Wait for durability
+await rect.flush();
+```
+
+Every `patch` / `patchPath` call does, synchronously and in this order: update the pending patch, recompute `data`, emit on `doc.$` and the MobX atom, schedule the commit, emit a local CDC event (`origin: 'local'`), emit a `local_patch` diagnostic event, and queue a tentative overlay broadcast. The returned Promise resolves when the patch is committed to SQLite; it is safe to ignore it with `void` during high-frequency interactions and `await doc.flush()` at the end of the gesture.
+
+`PatchPayload<T>` is the typed patch shape: every property optional, objects recursively partial or `null`, arrays replaced whole.
+
+### 3.3 Remote changes and rebasing
+
+When the engine's CDC stream reports a remote insert/update for this document, the document:
+
+1. drops a matching tentative overlay,
+2. updates `committedData` and the committed revision,
+3. recomputes `data = committed + local pending patches`,
+4. emits only if the result differs structurally from the previous snapshot (`deepEquals`).
+
+Echoes of the document's own pending commits are suppressed by `mutationId` / overlay id. A remote `delete` disposes the document.
+
+### 3.4 Lifecycle and errors
+
+- `doc.errors$` emits deferred commit errors; the failed pending patch is rolled back to the committed state and the pending Promises reject.
+- `doc.events$` filters the store-wide `events$` to this document.
+- `doc.dispose()` unsubscribes from CDC, unregisters from scheduler and overlay channel, and completes `$` and `errors$`. Patching a disposed document throws.
+
+---
+
+## 4. Commit Policies and the CommitScheduler
+
+The `CommitScheduler` turns many in-memory patches into few SQLite commits:
+
+- Patches for the same document are merged with `mergePatches` (null tombstones preserved); path writes are queued as path sets.
+- `'lazy'` policy: a trailing debounce (`commitDelayMs`) restarts on each patch; a `maxCommitWaitMs` timer guarantees an upper bound.
+- `'immediate'` policy: the commit is started right away.
+- Due entries are committed through `LiveDocEngine.commitBatchedPatches`, which issues a single `store.commit(...events)` for the batch.
+- `flushDoc`, `flushCollection` and `flushAll` commit immediately and also broadcast a `commit` message on the overlay channel so other contexts can drop their tentative state.
+
+Policy is set globally in `LiveStructConfig` or per collection through `LiveDocumentOptions`:
+
+```typescript
+const cursors = await store.collection<{ id: string; x: number; y: number }>('cursors', {
+    commitPolicy: 'lazy',
+    commitDelayMs: 300,
+    maxCommitWaitMs: 2000,
+});
+
+const settings = await store.collection<{ id: string; theme: string }>('settings', {
+    commitPolicy: 'immediate',
+});
+```
+
+---
+
+## 5. Tentative Overlays (`OverlayChannel`)
+
+Uncommitted patches are shared with other same-origin contexts (tabs, iframes) that opened the same store `name`:
+
+- The sender coalesces outgoing patches per document and posts at most one `overlay` message per animation frame (`requestAnimationFrame`, 16 ms timer fallback).
+- The receiver applies the patch on top of its committed state and reports `isTentative === true`, unless it has local pending edits (local edits always win).
+- Overlays never touch SQLite or the eventlog. They are dropped when a matching commit arrives (by overlay id), when a `commit` message is received, or after `overlayTtlMs` without updates.
+- Messages from the same `sessionId` are ignored, so each context needs its own session id.
+
+Set `disableOverlay: true` to turn the channel off (for example in tests).
+
+---
+
+## 6. Paths and Lenses
+
+`NestedPath<T>` generates all dot paths of `T` (array indices as `${number}` segments) up to depth 4 (`DefaultMaxDepth`). Leaf types such as `Date`, typed arrays, `Map`, `Set`, `Blob` and functions are not descended into. `PathValue<T, P>` resolves the value type at a path.
+
+```typescript
+import {
+    getNestedPath,
+    hasNestedPath,
+    setNestedPath,
+    deleteNestedPath,
+    createDocLens,
+    type NestedPath,
+} from '@actdim/livestruct';
+
+type ShapePath = NestedPath<Shape>; // 'id' | 'name' | 'x' | 'y' | 'style' | 'style.fill' | 'style.stroke'
+
+const fill = getNestedPath(rect.data, 'style.fill');        // string | undefined
+const exists = hasNestedPath(rect.data, 'style.stroke');    // boolean
+const moved = setNestedPath({ ...rect.data }, 'x', 5);      // new object, original untouched
+const plain = deleteNestedPath({ ...rect.data }, 'style');  // new object without 'style'
+
+const fillLens = createDocLens(rect, 'style.fill');
+fillLens.get();                // reads rect.data
+await fillLens.set('green');   // routes through rect.patchPath
+```
+
+`createLens` is an alias of `createDocLens`. Lenses never mutate `doc.data` directly.
+
+---
+
+## 7. JSON Safety
+
+Document bodies are stored as JSON text. `assertJsonSafe(value)` runs on `create`, `patch`, `patchPath` and `replace` and throws `LiveStructValueError` (with a `path` property) for:
+
+- `NaN` / `Infinity`, functions, symbols, bigints,
+- `Date` (use ISO strings or numbers), `Map` (use plain objects), `Set` (use arrays),
+- typed arrays and `ArrayBuffer` (use the BlobStore),
+- class instances and circular references.
+
+```typescript
+import { LiveStructValueError } from '@actdim/livestruct';
+
+try {
+    await rect.patchUnchecked({ createdAt: new Date() });
+} catch (err) {
+    if (err instanceof LiveStructValueError) {
+        console.warn(err.path, err.message); // 'createdAt', 'Date at createdAt: convert to ISO string or number'
+    }
+}
+```
+
+---
+
+## 8. MobX Integration
+
+Each document owns a MobX atom named `LiveDocument:<collection>:<id>`. Reading `doc.data` inside a MobX reaction or an `observer` component subscribes to it; every verified change calls `reportChanged()`.
+
+For property-style access, `toObservableDocument(doc)` returns a cached `Proxy`: unknown property reads fall through to `doc.data`, and property writes call `doc.patchUnchecked({ [prop]: value })` asynchronously.
+
+```typescript
+import { autorun } from 'mobx';
+import { toObservableDocument } from '@actdim/livestruct';
+
+const shape = toObservableDocument(rect);
+autorun(() => console.log(rect.data.x)); // re-runs on every change of rect
+shape.name = 'Renamed';                  // schedules a patch; errors go to the error stream
+```
+
+---
+
+## 9. The Engine and Change Data Capture
+
+`LiveDocEngine` is the low-level layer (one per store, `store.engine`). Each document exposes a per-collection view of it as `doc.engine` (`LiveEngineAccess<T>`):
+
+```typescript
+// Read-only SQL. SELECT and PRAGMA only; other statements throw.
+// A FROM clause naming a collection is rewritten into a subquery over the docs table.
+// Rewritten rows expose id, collection, rev, data (JSON text), blobs, updated_at.
+const rows = await rect.engine.queryRaw<{ id: string; rev: number; data: string }>(
+    'SELECT * FROM shapes WHERE id = ?',
+    ['rect-1']
+);
+const body = JSON.parse(rows[0].data) as Shape;
+
+// Aggregates get a convenience 'count' alias for COUNT(*)
+const [{ count }] = await store.engine.queryRaw<{ count: number }>('SELECT COUNT(*) FROM shapes');
+
+// Raw commits: type 'insert' | 'update' (replace) | 'patch' | 'delete'
+await rect.engine.commitRaw({ type: 'patch', id: 'rect-1', data: { x: 1 } });
+
+// Change Data Capture for the collection
+const sub = rect.engine.cdc$.subscribe((e) => console.log(e.type, e.id, e.delta));
+```
+
+`store.engine.cdc$` is the full `CDCEvent<T>` stream: `type` (`insert` / `update` / `delete`), `kind` (adds `replace`), `collection`, `id`, `rev`, `delta`, `data`, `timestamp`, `mutationId`, `overlayId`, `origin` (`local`, `remote`, `migration`). Local events are emitted synchronously; remote events come from LiveStore's `docs` table subscription by comparing revisions.
+
+---
+
+## 10. Binary Blobs
+
+Binary payloads are not allowed in document bodies. The engine accepts a `BlobMap` (`Record<string, Uint8Array | Float32Array>`) on `insertDoc`, `updateDoc`, `patchDoc` and through `commitRaw({ ..., blobs })`. Each blob is stored in the `BlobStore` under the SHA-256 of a 1-byte type tag plus the bytes; the row's `blobs` column stores the name-to-hash map. `engine.getDoc()` rehydrates blobs as the original typed array type.
+
+```typescript
+const geometry = new Float32Array([0, 0, 10, 0, 10, 10]);
+await store.engine.patchDoc('shapes', 'rect-1', { name: 'Poly' }, { vertices: geometry });
+
+const record = await store.engine.getDoc<Shape>('shapes', 'rect-1');
+const vertices = record?.blobs.vertices; // Float32Array
+```
+
+`LiveDocument` does not expose blobs on `doc.data`; use the engine for blob reads and writes.
+
+---
+
+## 11. Diagnostic Events
+
+`store.events$` (and per document `doc.events$`) emit `LiveStructEvent` objects:
+
+| `type` | Emitted when |
+|---|---|
+| `local_patch` | `patch` / `patchPath` applied locally. |
+| `overlay_sent` | A coalesced overlay frame was posted. |
+| `overlay_received` | A tentative overlay from another session arrived. |
+| `commit` | The scheduler committed a document to SQLite (carries `rev`, `overlayId`, `patch`). |
+| `remote_commit` | A remote commit was observed through LiveStore CDC or an overlay `commit` message (deduplicated). |
+
+---
+
+[<- Back to 01. Overview](./topic--01-overview-and-advantages.md) | [Next: 03. Architecture & Wiring ->](./topic--03-architecture-and-wiring.md)
+
+---
+
+## Document: docs/topic--03-architecture-and-wiring.md (Architecture & Wiring)
+
+# Architecture & Wiring
+
+[<- Back to 02. Core Concepts](./topic--02-core-concepts.md) | [Next: 04. Integration Guide ->](./topic--04-integration-guide.md)
+
+---
+
+This page describes how the pieces are wired at runtime and how data flows between them. Two companion pages go deeper:
+
+- [LiveStruct Architecture & Engine Design](./topic--architecture.md) - the `docs` table, materializers, BlobStore, lazy-commit internals.
+- [LiveStore 0.5.0 Integration & Architectural Spike](./topic--livestore-integration.md) - measured evidence behind the design (latency, bundle size, worker shipping, iframe sessions).
+
+---
+
+## 1. Runtime Topology
+
+LiveStruct runs in up to three kinds of JavaScript contexts:
+
+| Context | What runs there | Entry |
+|---|---|---|
+| **UI context** (each tab or same-origin iframe) | `createLiveStruct` store, collections, documents, `CommitScheduler`, `OverlayChannel`, `LiveDocEngine`, LiveStore client session with an in-memory SQLite mirror. | `@actdim/livestruct` |
+| **Leader dedicated worker** (one per store, elected) | LiveStore leader: persistent SQLite on OPFS, eventlog, materializers from the built-in `schema`. | `@actdim/livestruct/worker` (`makeWorker({ schema })`) |
+| **SharedWorker** (one per origin and store) | LiveStore shared worker: connects all client sessions to the leader. | `@actdim/livestruct/shared-worker` |
+
+```mermaid
+flowchart LR
+    subgraph TabA["Tab A (UI context)"]
+        A_UI["UI components<br/>(React / dynstruct / MobX)"]
+        A_DOC["LiveDocument / LiveCollection"]
+        A_SCH["CommitScheduler"]
+        A_ENG["LiveDocEngine<br/>(cdc$, queryRaw, commitRaw)"]
+        A_LS["LiveStore client session<br/>(in-memory SQLite)"]
+        A_OV["OverlayChannel"]
+        A_UI --> A_DOC
+        A_DOC --> A_SCH --> A_ENG --> A_LS
+        A_DOC <--> A_OV
+        A_ENG -- "cdc$" --> A_DOC
+    end
+
+    subgraph TabB["Tab B / iframe (UI context)"]
+        B_DOC["LiveDocument"]
+        B_OV["OverlayChannel"]
+        B_LS["LiveStore client session"]
+        B_DOC <--> B_OV
+    end
+
+    SW["SharedWorker<br/>@actdim/livestruct/shared-worker"]
+    LW["Leader worker<br/>@actdim/livestruct/worker<br/>OPFS SQLite + eventlog"]
+
+    A_LS <--> SW
+    B_LS <--> SW
+    SW <--> LW
+    A_OV <-. "BroadcastChannel<br/>livestruct:&lt;name&gt;:overlay" .-> B_OV
+```
+
+Two independent channels connect contexts:
+
+1. **The durable path** - LiveStore events travel client session -> SharedWorker -> leader worker -> OPFS, and back out to every other client session. Each session's `docs` table subscription feeds `LiveDocEngine`, which emits remote CDC events.
+2. **The ephemeral path** - `OverlayChannel` posts tentative patches and flush notifications over a `BroadcastChannel`. Nothing on this path is persisted.
+
+### Adapter selection
+
+`resolveLiveStoreAdapter(config)` picks the LiveStore adapter at startup; the result is visible as `store.storageMode`:
+
+```mermaid
+flowchart TD
+    S["resolveLiveStoreAdapter(config)"] --> M{"forceMemory, storagePath ':memory:',<br/>or no window/navigator?"}
+    M -- yes --> MEM["makeInMemoryAdapter()<br/>storageMode 'in-memory'"]
+    M -- no --> O{"OPFS available?<br/>(navigator.storage.getDirectory)"}
+    O -- no --> MEM
+    O -- yes --> SH{"canUseSharedWorker() and<br/>worker + sharedWorker given?"}
+    SH -- yes --> P["makePersistedAdapter({ storage: opfs, worker, sharedWorker, sessionId })<br/>storageMode 'persisted'"]
+    SH -- no --> W{"worker given?"}
+    W -- yes --> ST["makeSingleTabAdapter({ storage: opfs, worker, sessionId })<br/>storageMode 'single-tab'"]
+    W -- no --> MEM
+```
+
+If adapter construction throws, the engine falls back to the in-memory adapter. The `BlobStore` follows the same decision: in-memory when `forceMemory` is set or the resolved mode is `in-memory`, otherwise `OpfsBlobStore` (`livestruct-blobs/` directory, with an in-memory fallback per operation).
+
+---
+
+## 2. Object Wiring Inside One Context
+
+`createLiveStruct` builds a small object graph. One engine, one scheduler and one overlay channel are shared by every collection and document of the store:
+
+```mermaid
+flowchart TD
+    CFG["LiveStructConfig"] --> CLS["createLiveStruct()"]
+    CLS --> ENG["createLiveEngine() -> LiveDocEngine"]
+    ENG --> LS["createStorePromise({ schema, storeId: name, adapter,<br/>confirmUnsavedChanges: false, disableDevtools: true })"]
+    ENG --> BS["resolveBlobStore()"]
+    CLS --> OC["new OverlayChannel({ storeId, sessionId, overlayTtlMs, disabled })"]
+    CLS --> CS["new CommitScheduler(engine, { commitPolicy, commitDelayMs, maxCommitWaitMs, overlayChannel })"]
+    CLS --> EV["events$ (Subject of LiveStructEvent)"]
+    CLS --> INST["LiveStoreInstance"]
+    INST --> COL["collection(name) -> LiveCollectionImpl"]
+    COL --> ACC["engine.getEngineAccess(name) -> LiveEngineAccess"]
+    COL --> DOC["LiveDocumentImpl (per id, cached)"]
+    DOC -. "registerDocument" .-> CS
+    DOC -. "registerDocument" .-> OC
+    DOC -. "cdc$ filtered by id" .-> ACC
+```
+
+Additional wiring done by `createLiveStruct`:
+
+- `engine.cdc$` events with `origin: 'remote'` are re-emitted as `remote_commit` diagnostic events (deduplicated by collection, id, rev and overlay id).
+- `window` `pagehide` and `document` `visibilitychange` (hidden) trigger `CommitScheduler.flushAll()`.
+- `store.close()` removes those listeners, flushes, disposes the overlay channel, scheduler and collections, then closes the engine (which shuts down the LiveStore session).
+
+---
+
+## 3. Data Flow: Local Patch
+
+```mermaid
+sequenceDiagram
+    participant UI as UI code
+    participant D as LiveDocument
+    participant S as CommitScheduler
+    participant O as OverlayChannel
+    participant E as LiveDocEngine
+    participant L as LiveStore (client session)
+
+    UI->>D: patch({ x: 120 })
+    D->>D: assertJsonSafe, merge into localPendingPatch
+    D->>D: recompute data, emit $ and MobX atom
+    D->>S: schedulePatch(collection, id, patch)
+    D->>E: emitCDC({ origin: 'local', mutationId: overlayId })
+    D->>O: sendTentative(patch, overlayId)
+    Note over O: coalesced, posted on next animation frame
+    Note over S: debounce commitDelayMs / cap maxCommitWaitMs
+    S->>E: commitBatchedPatches([...entries])
+    E->>L: store.commit(DocPatched..., DocPathSet...)
+    E-->>S: DocumentRecord[] (new rev, data)
+    S->>D: onCommitSuccess(rev, data, overlayId)
+    S-->>UI: patch() Promise resolves
+```
+
+Key properties:
+
+- Nothing in the synchronous part of `patch()` touches SQLite; UI code sees the new `doc.data` immediately.
+- The engine writes the merged patch as one `DocPatched` event (`json_patch(body, ?)`) and each path write as a `DocPathSet` event (`json_set(body, ?, json(?))`), all in a single `store.commit(...)` call per batch.
+- Local CDC is emitted once, by the document, so the scheduler passes `emitCDC: false` to the engine.
+
+## 4. Data Flow: Remote Change
+
+```mermaid
+sequenceDiagram
+    participant LA as Tab A LiveStore
+    participant SW as SharedWorker / leader
+    participant LB as Tab B LiveStore
+    participant EB as Tab B LiveDocEngine
+    participant DB as Tab B LiveDocument
+
+    LA->>SW: event pushed
+    SW->>LB: event pulled, materialized into docs table
+    LB->>EB: tables.docs subscription callback (rows)
+    EB->>EB: compare row.rev with localKnownDocs, skip own mutationIds
+    EB->>DB: cdc$ { type: 'update', origin: 'remote', overlayId }
+    DB->>DB: drop matching overlay, update committedData
+    DB->>DB: data = committed + local pending, emit if changed
+```
+
+Inserts are detected as rows with an unknown key, updates as rows with a higher `rev`, deletes as known keys missing from the row set. A remote delete disposes the cached document and removes it from its collection.
+
+## 5. Data Flow: Tentative Overlay and Flush
+
+```mermaid
+sequenceDiagram
+    participant DA as Tab A LiveDocument
+    participant OA as Tab A OverlayChannel
+    participant OB as Tab B OverlayChannel
+    participant DB as Tab B LiveDocument
+
+    DA->>OA: sendTentative(patch, overlayId)
+    OA->>OB: { type: 'overlay', patch, overlayId, senderSessionId } (once per frame)
+    OB->>DB: applyRemoteOverlay(mergedPatch, overlayId)
+    Note over DB: isTentative = true (unless DB has local pending edits)
+    DA->>DA: flush()
+    DA->>OA: broadcastCommit(overlayId, patch, rev)
+    OA->>OB: { type: 'commit', overlayId, patch, rev }
+    OB->>DB: applyRemoteCommit(patch, rev, overlayId)
+    Note over DB: isTentative = false
+```
+
+Without an explicit flush, the overlay is cleared when the durable commit arrives through LiveStore (matched by overlay id) or when `overlayTtlMs` elapses.
+
+---
+
+## 6. Where the Application Plugs In
+
+```mermaid
+flowchart LR
+    APP["Application"] --> CFG["createLiveStruct({ name, sessionId, worker, sharedWorker })"]
+    APP --> VIEW["Views read doc.data / doc.$<br/>(MobX observer, dynstruct, RxJS)"]
+    APP --> CMD["Commands call doc.patch / patchPath / flush"]
+    APP --> BUS["Optional msgmesh MsgBus<br/>for commands and ephemeral signals"]
+    APP --> LOW["Low-level: store.engine.cdc$, queryRaw, commitRaw, blobs"]
+    APP --> TEL["Telemetry: store.events$, store.errors$"]
+```
+
+- **Views** stay declarative: MobX `observer` components (and dynstruct views) re-render when `doc.data` changes.
+- **Commands** call document methods and decide when durability matters (`await doc.flush()` at the end of a gesture).
+- **Messaging** (`@actdim/msgmesh`) is optional and lives beside the store; LiveStruct does not depend on it. A bridge from `engine.cdc$` to bus channels is application (or `@actdim/msgmesh-store`) code.
+
+Step-by-step setup is in the [Integration Guide](./topic--04-integration-guide.md).
+
+---
+
+[<- Back to 02. Core Concepts](./topic--02-core-concepts.md) | [Next: 04. Integration Guide ->](./topic--04-integration-guide.md)
+
+---
+
+## Document: docs/topic--04-integration-guide.md (Integration Guide)
+
+# Integration Guide
+
+[<- Back to 03. Architecture & Wiring](./topic--03-architecture-and-wiring.md) | [Next: 05. API Reference ->](./topic--05-api-reference.md)
+
+---
+
+This guide wires `@actdim/livestruct` into a Vite + React application step by step. Every snippet follows the shipped API and the `livestruct-demo` application (`src/packages/livestruct-demo` in the monorepo; live at https://actdim.github.io/livestruct-demo/).
+
+---
+
+## Step 1. Install
+
+```bash
+pnpm add @actdim/livestruct @actdim/utico mobx rxjs \
+    @livestore/livestore@0.5.0 @livestore/adapter-web@0.5.0 @livestore/wa-sqlite@0.5.0 effect@4.0.3
+```
+
+Peer dependencies declared by `@actdim/livestruct` (`package.json` `peerDependencies`):
+
+| Peer | Version | Required |
+|---|---|---|
+| `@livestore/livestore` | `0.5.0` (exact) | yes |
+| `@livestore/adapter-web` | `0.5.0` (exact) | yes |
+| `effect` | `4.0.3` (exact) | yes |
+| `mobx` | `>=6.10.0` | yes |
+| `rxjs` | `>=7.8.0` | yes |
+| `@actdim/utico` | `>=1.12.0` | yes |
+| `@actdim/msgmesh` | `>=1.12.0` | optional |
+
+Notes:
+
+- The LiveStore and `effect` versions are pinned exactly; mismatched `effect` 4.x minors break LiveStore resolution (see [LiveStore Integration](./topic--livestore-integration.md), section Q1).
+- `@livestore/adapter-web` declares its own peers (`@opentelemetry/api`, `@standard-schema/spec`, `@effect/*` platform packages). Install the ones your package manager reports as missing; LiveStruct's own development setup installs `@opentelemetry/api` and `@standard-schema/spec`.
+- `@livestore/wa-sqlite` is listed explicitly (as in `livestruct-demo`) because the Vite and Vitest configuration below reference it by name.
+- For React views add `react`, `react-dom` and `mobx-react-lite`; for messaging add `@actdim/msgmesh`.
+
+---
+
+## Step 2. Configure Vite for the workers
+
+LiveStore's workers are ES modules and its SQLite loader must not be pre-bundled:
+
+```typescript
+// vite.config.ts
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+    plugins: [react()],
+    worker: {
+        format: 'es',
+    },
+    optimizeDeps: {
+        exclude: ['@livestore/wa-sqlite'],
+    },
+});
+```
+
+Workers are consumed with Vite's `?worker` / `?sharedworker` import suffixes, which make Vite emit dedicated worker chunks (the reasoning is recorded in [LiveStore Integration](./topic--livestore-integration.md), section Q4).
+
+---
+
+## Step 3. Provide the worker constructors
+
+**Option A - use the shipped workers.** `@actdim/livestruct/worker` runs `makeWorker({ schema })` with the built-in schema; `@actdim/livestruct/shared-worker` re-hosts LiveStore's shared worker.
+
+```typescript
+import LiveWorker from '@actdim/livestruct/worker?worker';
+import LiveSharedWorker from '@actdim/livestruct/shared-worker?sharedworker';
+```
+
+**Option B - an app-local worker file** (what `livestruct-demo` does in `src/livestore/worker.ts`), useful when the app needs its own worker entry:
+
+```typescript
+// src/livestore/worker.ts
+import '@livestore/adapter-web/worker-vite-dev-polyfill';
+import { makeWorker } from '@livestore/adapter-web/worker';
+import { schema } from '@actdim/livestruct/engine';
+
+makeWorker({ schema });
+```
+
+```typescript
+// imported where the store is created
+const workerMod = await import('./livestore/worker?worker');
+const sharedMod = await import('@livestore/adapter-web/shared-worker?sharedworker');
+```
+
+Whichever option you choose, the worker must register the **same** built-in `schema` that the UI context uses.
+
+---
+
+## Step 4. Create the store
+
+```typescript
+// src/store.ts
+import { createLiveStruct, type LiveStoreInstance } from '@actdim/livestruct';
+
+export async function openStore(): Promise<LiveStoreInstance> {
+    const isNode = typeof window === 'undefined';
+
+    let worker: unknown;
+    let sharedWorker: unknown;
+    if (!isNode) {
+        worker = (await import('@actdim/livestruct/worker?worker')).default;
+        sharedWorker = (await import('@actdim/livestruct/shared-worker?sharedworker')).default;
+    }
+
+    return createLiveStruct({
+        name: 'cad_store',
+        // Same-origin iframes share sessionStorage: give every context its own session id.
+        sessionId: `session_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        forceMemory: isNode,
+        worker,
+        sharedWorker,
+    });
+}
+```
+
+Check `store.storageMode` after startup:
+
+| `storageMode` | Meaning |
+|---|---|
+| `'persisted'` | OPFS + leader worker + SharedWorker: durable and multi-tab. |
+| `'single-tab'` | OPFS + leader worker, no SharedWorker (SharedWorker unavailable or not passed). |
+| `'in-memory'` | No persistence: Node/SSR, `forceMemory`, `storagePath: ':memory:'`, no OPFS (for example some private windows), or worker construction failed. |
+
+---
+
+## Step 5. Open a collection and a document
+
+```typescript
+import type { LiveDocument } from '@actdim/livestruct';
+
+interface CadShape {
+    id: string;
+    type: 'rect' | 'circle' | 'line';
+    x: number;
+    y: number;
+    name?: string;
+}
+
+interface CadDocument {
+    id: string;
+    title: string;
+    selectedShapeId?: string | null;
+    shapes: Record<string, CadShape>;
+}
+
+const store = await openStore();
+const documents = await store.collection<CadDocument>('cad_documents');
+
+const doc: LiveDocument<CadDocument> =
+    (await documents.get('doc-default')) ??
+    (await documents.create('doc-default', {
+        id: 'doc-default',
+        title: 'Mechanical Assembly',
+        selectedShapeId: null,
+        shapes: {},
+    }));
+```
+
+Mutations follow the "instant in memory, durable on flush" pattern used by the demo's `CadStore`:
+
+```typescript
+async function moveShape(shapeId: string, x: number, y: number): Promise<void> {
+    void doc.patch({ shapes: { [shapeId]: { x, y } } }); // instant, coalesced commit
+}
+
+async function endDrag(): Promise<void> {
+    await doc.flush(); // durable now; other tabs drop their tentative overlay
+}
+
+async function removeShape(shapeId: string): Promise<void> {
+    void doc.patch({ shapes: { [shapeId]: null } }); // RFC 7396: null deletes the key
+    await doc.flush();
+}
+```
+
+---
+
+## Step 6. Pair the store with a msgmesh bus
+
+LiveStruct does not import `@actdim/msgmesh`; a bus is created next to the store for commands and ephemeral signals. The demo does exactly this:
+
+```typescript
+import { createMsgBus } from '@actdim/msgmesh/core';
+import type { MsgBus } from '@actdim/msgmesh/contracts';
+
+type CadMsgStruct = {
+    'cad.cursor.drag': {
+        in: { shapeId: string; x: number; y: number; timestamp: number };
+    };
+};
+
+const bus: MsgBus<CadMsgStruct> = createMsgBus<CadMsgStruct>();
+
+const abort = new AbortController();
+bus.on({
+    channel: 'cad.cursor.drag',
+    options: { abortSignal: abort.signal },
+    callback: (msg) => {
+        void doc.patch({ shapes: { [msg.payload.shapeId]: { x: msg.payload.x, y: msg.payload.y } } });
+    },
+});
+```
+
+To publish storage changes onto a bus, subscribe to the public CDC stream and forward events in your own bridge (or use `@actdim/msgmesh-store`):
+
+```typescript
+const cdcSub = store.engine.cdc$.subscribe((event) => {
+    if (event.origin === 'remote') {
+        // forward { collection, id, rev, delta } to a bus channel of your choice
+    }
+});
+```
+
+---
+
+## Step 7. Render with React (MobX)
+
+`doc.data` reports to a MobX atom, so a `mobx-react-lite` `observer` re-renders when the document changes - this is how the demo's `PropertyInspector` and `VectorCanvas` read state:
+
+```tsx
+import React from 'react';
+import { observer } from 'mobx-react-lite';
+import type { LiveDocument } from '@actdim/livestruct';
+
+export const DocumentTitle: React.FC<{ doc: LiveDocument<CadDocument> }> = observer(({ doc }) => {
+    const data = doc.data; // tracked read
+    return (
+        <h2>
+            {data.title}
+            {doc.isTentative && <small> (live edit from another tab)</small>}
+            {doc.isPending && <small> (saving...)</small>}
+        </h2>
+    );
+});
+```
+
+Without MobX, subscribe to the RxJS stream:
+
+```tsx
+import { useEffect, useState } from 'react';
+
+function useLiveData<T extends object>(doc: LiveDocument<T>): Readonly<T> {
+    const [data, setData] = useState(doc.data);
+    useEffect(() => {
+        const sub = doc.$.subscribe(setData);
+        return () => sub.unsubscribe();
+    }, [doc]);
+    return data;
+}
+```
+
+**With `@actdim/dynstruct`:** dynstruct components are MobX-reactive, so the same rule applies - read `doc.data` (or a `toObservableDocument(doc)` proxy) inside the component's view and call document methods from its actions. Keep the store instance outside the component tree (or in a service) and close it on shutdown.
+
+---
+
+## Step 8. Observe errors and diagnostics
+
+```typescript
+store.errors$.subscribe((err) => console.error('[livestruct] commit failed', err));
+
+store.events$.subscribe((evt) => {
+    if (evt.type === 'commit') {
+        console.debug('committed', evt.collection, evt.id, 'rev', evt.rev);
+    }
+});
+```
+
+`events$` drives the demo's telemetry panel (`local_patch`, `overlay_sent`, `overlay_received`, `commit`, `remote_commit`).
+
+---
+
+## Step 9. Shut down cleanly
+
+```typescript
+// Before a programmatic navigation or export that needs everything on disk:
+await store.flush();
+
+// On app teardown (HMR dispose, unmount of a standalone editor, tests):
+await store.close(); // flushes, disposes collections, closes the LiveStore session
+```
+
+`pagehide` and `visibilitychange` (hidden) flushes are registered automatically by `createLiveStruct`, so no `beforeunload` handler is needed.
+
+---
+
+## Testing in Node (Vitest)
+
+In Node the engine always uses LiveStore's in-memory adapter. LiveStore's SQLite package resolves the browser `wa-sqlite` build by default, so alias it to the Node build (this is LiveStruct's own `vitest.node.config.ts`):
+
+```typescript
+// vitest.config.ts
+import { defineConfig } from 'vitest/config';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const waSqliteNodePath = require.resolve('@livestore/wa-sqlite/dist/wa-sqlite.node.mjs');
+
+export default defineConfig({
+    test: {
+        environment: 'node',
+        pool: 'forks',
+    },
+    resolve: {
+        alias: {
+            '@livestore/wa-sqlite/dist/wa-sqlite.mjs': waSqliteNodePath,
+        },
+    },
+});
+```
+
+```typescript
+import { it, expect } from 'vitest';
+import { createLiveStruct } from '@actdim/livestruct';
+
+it('patches and commits', async () => {
+    const store = await createLiveStruct({ name: 'test_store', forceMemory: true, disableOverlay: true });
+    const items = await store.collection<{ id: string; n: number }>('items');
+    const doc = await items.create('a', { id: 'a', n: 1 });
+
+    void doc.patch({ n: 2 });
+    expect(doc.data.n).toBe(2);
+    expect(doc.isPending).toBe(true);
+
+    await doc.flush();
+    expect(doc.isPending).toBe(false);
+    await store.close();
+});
+```
+
+---
+
+## Checklist
+
+- Vite: `worker.format: 'es'` and `optimizeDeps.exclude: ['@livestore/wa-sqlite']`.
+- Worker and UI use the same built-in `schema`.
+- Unique `sessionId` per tab and per iframe.
+- Document bodies are JSON-safe; binary data goes through engine blobs.
+- `await doc.flush()` where durability matters; `store.close()` on teardown.
+- Subscribe to `store.errors$`.
+
+---
+
+[<- Back to 03. Architecture & Wiring](./topic--03-architecture-and-wiring.md) | [Next: 05. API Reference ->](./topic--05-api-reference.md)
+
+---
+
+## Document: docs/topic--05-api-reference.md (API Reference)
+
+# API Reference
+
+[<- Back to 04. Integration Guide](./topic--04-integration-guide.md) | [Back to Main README](../README.md)
+
+---
+
+## Entry Points
+
+| Import path | Re-exports |
+|---|---|
+| `@actdim/livestruct` | `createLiveStruct` + engine module + lens module + document module (+ deprecated `LiveSqliteEngine`). |
+| `@actdim/livestruct/engine` | engine module + document module + lens module (no `createLiveStruct`). |
+| `@actdim/livestruct/document` | document module (via the `./*` wildcard export). |
+| `@actdim/livestruct/lens` | lens module (via the `./*` wildcard export). |
+| `@actdim/livestruct/worker` | Side-effect worker script: `makeWorker({ schema })`. No exports. |
+| `@actdim/livestruct/shared-worker` | Side-effect SharedWorker script: imports `@livestore/adapter-web/shared-worker`. No exports. |
+
+Below, symbols are grouped by module. All of them are available from the root import `@actdim/livestruct`.
+
+---
+
+## Store Factory (`src/index.ts`)
+
+| Symbol | Signature | Purpose |
+|---|---|---|
+| `createLiveStruct` | `(config: LiveStructConfig) => Promise<LiveStoreInstance>` | Creates engine, overlay channel and commit scheduler; returns the store with collection access, flush and close. |
+
+---
+
+## Document Module (`src/document/`)
+
+### Contracts (`types.ts`)
+
+| Symbol | Kind | Summary |
+|---|---|---|
+| `Disposable` | interface | `dispose(): void`, `readonly isDisposed: boolean`. |
+| `PatchPayload<T>` | type | Recursive RFC 7396 patch: optional keys, nested objects partial or `null`, arrays replaced whole, leaves `T[K] \| null`. |
+| `CommitPolicy` | type | `'lazy' \| 'immediate'`. |
+| `LiveStructEventType` | type | `'local_patch' \| 'overlay_sent' \| 'overlay_received' \| 'commit' \| 'remote_commit'`. |
+| `LiveStructEvent` | interface | `type`, `collection`, `id`, `timestamp`, optional `rev`, `overlayId`, `senderSessionId`, `origin`, `patch`. |
+| `LiveDocumentOptions` | interface | `commitPolicy?`, `commitDelayMs?`, `maxCommitWaitMs?` - per-collection commit settings. |
+| `LiveDocument<T>` | interface | High-level document (members below). |
+| `ILiveDocument<T>` | type | Alias of `LiveDocument<T>`. |
+| `LiveCollection<T>` | interface | High-level collection (members below). |
+| `LiveStructConfig` | interface | Store configuration (fields below). |
+| `LiveStoreInstance` | interface | Store returned by `createLiveStruct` (members below). |
+| `ObservableLiveDocument<T>` | type | `LiveDocument<T> & T` - result of `toObservableDocument`. |
+
+#### `LiveDocument<T>` members
+
+| Member | Type | Purpose |
+|---|---|---|
+| `id`, `collectionName` | `string` | Identity. |
+| `data` | `Readonly<T>` | Deeply frozen current snapshot; MobX-tracked read. |
+| `$` | `Observable<Readonly<T>>` | Current value plus every verified change. |
+| `errors$` | `Observable<Error>` | Deferred commit errors. |
+| `events$` | `Observable<LiveStructEvent>` | Store events filtered to this document. |
+| `isPending` | `boolean` | Local uncommitted patches exist. |
+| `isTentative` | `boolean` | Showing another context's uncommitted overlay. |
+| `patch(partial)` | `(partial: PatchPayload<T>) => Promise<void>` | RFC 7396 merge patch; instant locally, resolves when committed. |
+| `patchUnchecked(patch)` | `(patch: Record<string, unknown>) => Promise<void>` | Untyped `patch`. |
+| `patchPath(path, value)` | `<P extends NestedPath<T>>(path: P, value: PathValue<T, P>) => Promise<void>` | SET at a dot path (committed as `DocPathSet`). |
+| `replace(value)` | `(value: T) => Promise<void>` | Replaces the committed body (engine `updateDoc`), pending patches re-applied on top. |
+| `flush()` | `() => Promise<void>` | Commits this document's pending patches now. |
+| `subscriptionCount` | `number \| undefined` | 1 while the CDC subscription is active, else 0. |
+| `engine` | `LiveEngineAccess<T>` | Per-collection low-level access. |
+| `dispose()`, `isDisposed` | - | From `Disposable`. |
+
+#### `LiveCollection<T>` members
+
+| Member | Signature | Purpose |
+|---|---|---|
+| `name` | `string` | Collection name. |
+| `subscriptionCount` | `number` | Collection CDC subscription plus document subscriptions. |
+| `get(id)` | `(id: string) => Promise<LiveDocument<T> \| null>` | Cached or loaded document; `null` if absent. |
+| `create(id, initialData)` | `(id: string, initialData: T) => Promise<LiveDocument<T>>` | Inserts; throws if the id exists. |
+| `delete(id)` | `(id: string) => Promise<void>` | Deletes the row and disposes the cached document. |
+| `find(predicate?)` | `(predicate?: (item: T) => boolean) => Promise<Array<LiveDocument<T>>>` | All (or matching) documents. |
+| `query$` | `Observable<Array<LiveDocument<T>>>` | All documents, refreshed on collection CDC. |
+| `errors$` | `Observable<Error>` | Query refresh errors. |
+| `flush()` | `() => Promise<void>` | Commits all pending patches of the collection. |
+| `dispose()`, `isDisposed` | - | From `Disposable`. |
+
+#### `LiveStructConfig` fields
+
+`name: string`; optional `storagePath`, `forceMemory`, `sessionId`, `disableDevtools`, `confirmUnsavedChanges`, `worker`, `sharedWorker`, `commitPolicy` (default `'lazy'`), `commitDelayMs` (150), `maxCommitWaitMs` (1000), `overlayTtlMs` (1500), `disableOverlay`.
+
+#### `LiveStoreInstance` members
+
+| Member | Signature | Purpose |
+|---|---|---|
+| `engine` | `LiveDocEngine` | Low-level engine. |
+| `storageMode` | `string` | `'persisted'`, `'single-tab'` or `'in-memory'` (from LiveStore), else storage adapter mode. |
+| `errors$` | `Observable<Error>` | Commit scheduler errors. |
+| `events$` | `Observable<LiveStructEvent>` | Diagnostic events. |
+| `collection(name, options?)` | `<T extends object>(name: string, options?: LiveDocumentOptions) => Promise<LiveCollection<T>>` | Cached collection by name. |
+| `flush()` | `() => Promise<void>` | Commits all pending patches. |
+| `close()` | `() => Promise<void>` | Flushes, disposes everything and closes the engine. |
+
+### Implementations
+
+| Symbol | Signature | Purpose |
+|---|---|---|
+| `LiveDocumentImpl<T>` | `class implements LiveDocument<T>, CommitSchedulerDocumentTarget, OverlayDocumentTarget` | Document implementation; constructed by collections (`(collectionName, id, initialData, initialRev, rawEngine, engineAccess, commitScheduler?, overlayChannel?, options?, onEvent?, allEvents$?)`). |
+| `LiveCollectionImpl<T>` | `class implements LiveCollection<T>` | Collection implementation (`(name, rawEngine, commitScheduler?, overlayChannel?, options?, onEvent?, allEvents$?)`). |
+| `toObservableDocument` | `<T extends object>(doc: LiveDocument<T>) => ObservableLiveDocument<T>` | Cached Proxy: property reads from `doc.data`, property writes call `patchUnchecked`. |
+
+### Commit scheduling (`commitScheduler.ts`)
+
+| Symbol | Kind | Summary |
+|---|---|---|
+| `CommitSchedulerDocumentTarget` | interface | `onCommitSuccess(newRev, committedData, overlayId, committedPatch)`, `onCommitError(failedPatch, err)`. |
+| `CommitSchedulerConfig` | interface | `commitPolicy?`, `commitDelayMs?`, `maxCommitWaitMs?`, `overlayChannel?`, `onEvent?`. |
+| `CommitScheduler` | class | `new CommitScheduler(engine: LiveDocEngine, config?)`. |
+
+`CommitScheduler` members: `defaultPolicy`, `defaultDelayMs`, `defaultMaxWaitMs`, `errors$`, `reportError(err)`, `registerDocument(collection, id, doc)`, `unregisterDocument(collection, id)`, `hasPending(collection, id)`, `getPendingPatch(collection, id)`, `getPendingOverlayId(collection, id)`, `schedulePatch(collection, id, patch, blobs?, options?) => { promise, overlayId }`, `schedulePathSet(collection, id, path, value, options?) => { promise, overlayId }`, `commitBatch(docKeys, isFlush?)`, `flushDoc(collection, id)`, `flushCollection(collection)`, `flushAll()`, `dispose()`.
+
+### Overlays (`overlayChannel.ts`)
+
+| Symbol | Kind | Summary |
+|---|---|---|
+| `OverlayMessage` | interface | `{ type: 'overlay', collection, id, patch, overlayId, senderSessionId, timestamp }`. |
+| `CommitMessage` | interface | `{ type: 'commit', collection, id, overlayId, patch?, rev?, senderSessionId, timestamp }`. |
+| `OverlayChannelMessage` | type | `OverlayMessage \| CommitMessage`. |
+| `OverlayDocumentTarget` | interface | `applyRemoteOverlay(patch, overlayId)`, `clearRemoteOverlay(overlayId)`, optional `applyRemoteCommit(patch, rev, overlayId)`. |
+| `OverlayChannelOptions` | interface | `storeId`, `sessionId?`, `overlayTtlMs?` (1500), `disabled?`, `onEvent?`. |
+| `OverlayChannel` | class | `BroadcastChannel` named `livestruct:<storeId>:overlay`. |
+
+`OverlayChannel` members: `storeId`, `sessionId`, `overlayTtlMs`, `registerDocument(collection, id, doc)`, `unregisterDocument(collection, id)`, `sendTentative(collection, id, patch, overlayId)`, `flushOutgoing()`, `broadcastCommit(collection, id, overlayId, patch?, rev?)`, `dropOverlay(collection, id, overlayId?)`, `dispose()`.
+
+### Helpers
+
+| Symbol | Signature | Purpose |
+|---|---|---|
+| `LiveStructValueError` | `class extends Error { readonly path?: string }` | Thrown by `assertJsonSafe`. |
+| `ErrorSink` | `{ next(err: Error): void } \| ((err: Error) => void) \| undefined` | Target for `reportAsync`. |
+| `reportAsync` | `<T>(promise: Promise<T> \| undefined \| null, context: string, errors$?: ErrorSink) => Promise<T \| undefined>` | Swallows a rejection and routes it to an error sink. |
+| `deepFreeze` | `<T>(obj: T) => Readonly<T>` | Recursive `Object.freeze`. |
+| `deepEquals` | `(a: unknown, b: unknown) => boolean` | Structural equality (arrays, plain objects, `Uint8Array`, `Float32Array`). |
+| `assertJsonSafe` | `(value: unknown, path?: string, seen?: Set<unknown>) => void` | Rejects non-JSON values with `LiveStructValueError`. |
+| `toSqliteJsonPath` | `(path: string) => string` | `'items.0.title'` -> `'$.items[0].title'`. |
+| `setAtPath` | `<T extends object>(target: T, path: string, value: unknown) => T` | SET at a path on a `structuredClone`. |
+| `buildPathPatch` | `<T extends object, P extends NestedPath<T>>(target: T, path: P, value: PathValue<T, P>) => Record<string, unknown>` | Builds a merge patch equivalent to a path write. |
+
+---
+
+## Lens Module (`src/lens/`)
+
+| Symbol | Signature | Purpose |
+|---|---|---|
+| `Primitive` | type | `string \| number \| boolean \| bigint \| symbol \| null \| undefined`. |
+| `LeafTypes` | type | Types not descended into by `NestedPath` (primitives, `Function`, `Date`, `RegExp`, typed arrays, `ArrayBuffer`, `DataView`, `Blob`, `Map`, `Set`, `WeakMap`, `WeakSet`, `Promise`). |
+| `IsLeaf<T>` | type | `true` if `T` is a leaf (or `any`). |
+| `DepthCounter` | type | `readonly unknown[]` recursion counter. |
+| `DefaultMaxDepth` | type | `4`. |
+| `NestedPath<T, Depth?>` | type | Union of all dot paths of `T` up to `DefaultMaxDepth`. |
+| `PathValue<T, P>` | type | Value type at path `P`. |
+| `PatchPayload<T>` | type | Re-exported from the document types. |
+| `getNestedPath` | `<T, P extends NestedPath<T>>(obj: T, path: P) => PathValue<T, P> \| undefined` | Safe read. |
+| `hasNestedPath` | `<T>(obj: T, path: string) => boolean` | Own-property / index existence check. |
+| `setNestedPath` | `<T, P extends NestedPath<T>>(obj: T, path: P, value: PathValue<T, P>) => T` | Immutable set; creates missing objects or arrays. |
+| `deleteNestedPath` | `<T, P extends NestedPath<T>>(obj: T, path: P) => T` | Immutable delete (array items are spliced). |
+| `LensDocumentTarget<T>` | interface | `{ readonly data: Readonly<T>; patchPath(path, value): Promise<void> }`. |
+| `createDocLens` | `<T extends object, P extends NestedPath<T>>(doc: LensDocumentTarget<T>, path: P) => { path; get(); set(value): Promise<void> }` | Lens bound to a document path; writes go through `patchPath`. |
+| `createLens` | same as `createDocLens` | Alias. |
+
+---
+
+## Engine Module (`src/engine/`)
+
+### Types (`types.ts`)
+
+| Symbol | Kind | Summary |
+|---|---|---|
+| `StorageMode` | type | `'opfs' \| 'single-tab' \| 'memory' \| 'persisted' \| 'in-memory'`. |
+| `StorageAdapter` | interface | `mode`, `read(path)`, `write(path, data)`, `delete(path)`, `exists(path)`, `close?()`. |
+| `BlobMap` | type | `Record<string, Uint8Array \| Float32Array>`. |
+| `DocumentRecord<T>` | interface | `collection`, `id`, `rev`, `data`, `blobs`, `updatedAt`. |
+| `CDCEventType` | type | `'insert' \| 'update' \| 'delete'`. |
+| `CDCEventKind` | type | `CDCEventType \| 'replace'`. |
+| `CDCEvent<T>` | interface | `type`, `kind?`, `collection`, `id`, `rev`, `delta`, `data?`, `timestamp`, `mutationId?`, `overlayId?`, `origin?`. |
+| `RawCommitEvent<T>` | interface | `type: 'insert' \| 'update' \| 'patch' \| 'delete'`, `collection`, `id`, `data?`, `blobs?`, `rev?`, `mutationId?`, `overlayId?`, `origin?`. |
+| `EngineConfig` | interface | `name`, `storagePath?`, `forceMemory?`, `sessionId?`, `disableDevtools?`, `confirmUnsavedChanges?`, `worker?`, `sharedWorker?`. |
+| `LiveEngineAccess<T>` | interface | `tableName`, `commitRaw(event)`, `queryRaw<R>(sql, params?)`, `cdc$`. |
+
+### Engine (`liveStoreEngine.ts`)
+
+| Symbol | Signature | Purpose |
+|---|---|---|
+| `LiveStoreInstanceLike` | interface | Minimal LiveStore surface used by the engine: `query`, `commit`, `subscribe`, optional `storageMode`, `shutdownPromise`, `isClosed`. |
+| `LiveDocEngine` | `class` - `new LiveDocEngine(config: EngineConfig, storeOrStorage?: unknown, blobStore?: BlobStore)` | Document engine over a LiveStore instance. |
+| `LiveSqliteEngine` | alias of `LiveDocEngine` | Deprecated name, kept for compatibility. |
+| `createLiveEngine` | `(config: EngineConfig) => Promise<LiveDocEngine>` | Resolves adapter and blob store, creates the LiveStore with the built-in schema, initializes the engine. |
+
+`LiveDocEngine` members:
+
+| Member | Signature | Purpose |
+|---|---|---|
+| `config`, `store`, `blobStore`, `storage` | properties | Configuration and collaborators. |
+| `isClosed`, `storageMode`, `subscriptionCount` | getters | State. |
+| `cdc$` | `Observable<CDCEvent<unknown>>` | Full CDC stream (local and remote). |
+| `init()` | `() => Promise<this>` | Migrates legacy v1 data, seeds known rows, subscribes to `tables.docs`. |
+| `insertDoc` | `<T>(collection, id, data: T, blobs?, mutationId?) => Promise<DocumentRecord<T>>` | `DocInserted`; throws on duplicate id. |
+| `updateDoc` | `<T>(collection, id, data: T, blobs?, mutationId?) => Promise<DocumentRecord<T>>` | `DocReplaced` (upsert, full body). |
+| `patchDoc` | `<T>(collection, id, patch, blobs?, mutationId?) => Promise<DocumentRecord<T>>` | `DocPatched` (RFC 7396). |
+| `setPathDoc` | `<T>(collection, id, path, value, mutationId?) => Promise<DocumentRecord<T>>` | `DocPathSet` (`json_set`). |
+| `commitBatchedPatches` | `(entries: Array<{ collection; id; patch?; pathSet?; pathSets?; blobs?; mutationId?; overlayId?; emitCDC? }>) => Promise<DocumentRecord[]>` | Many patches in one `store.commit`. |
+| `deleteDoc` | `(collection, id, mutationId?) => Promise<boolean>` | `DocDeleted`; `false` if absent. |
+| `getDoc` | `<T>(collection, id) => Promise<DocumentRecord<T> \| null>` | Snapshot with rehydrated blobs. |
+| `queryDocs` | `<T>(collection, predicate?: (doc: DocumentRecord<T>) => boolean) => Promise<DocumentRecord<T>[]>` | All rows of a collection (blobs not loaded). |
+| `emitCDC` | `(event: CDCEvent<unknown>) => void` | Pushes an event to `cdc$`. |
+| `getEngineAccess` | `<T>(collection) => LiveEngineAccess<T>` | Collection-scoped access (used as `doc.engine`). |
+| `commitRaw` | `(event: unknown, defaultCollection?) => Promise<void>` | Dispatches a `RawCommitEvent` to insert/update/patch/delete. |
+| `queryRaw` | `<R>(sql, params?, defaultCollection?) => Promise<R[]>` | Read-only SQL (`SELECT` / `PRAGMA`); collection names in `FROM` are rewritten to a `docs` subquery. |
+| `close()` | `() => Promise<void>` | Completes `cdc$`, writes the legacy JSON snapshot to `storage`, closes blobs, shuts down LiveStore. |
+
+### Schema (`schema.ts`)
+
+| Symbol | Summary |
+|---|---|
+| `docs` | `State.SQLite.table` `docs`: `key` (PK), `collection`, `id`, `body`, `rev`, `updatedAt`, `blobs`, `mutationId`, `overlayId`, `origin`; index `idx_docs_collection_updatedAt`. |
+| `tables` | `{ docs }`. |
+| `events` | `DocInserted`, `DocReplaced`, `DocPatched`, `DocPathSet`, `DocDeleted` (names `livestruct.v1.*`, `Events.synced`). |
+| `makeDocKey` | `(collection: string, id: string) => string` - `` `${collection}\u0001${id}` ``. |
+| `state` | `State.SQLite.makeState({ tables, materializers })`. |
+| `schema` | `makeSchema({ state, events })` - pass to `makeWorker({ schema })`. |
+
+### Patching (`patch.ts`)
+
+| Symbol | Signature | Purpose |
+|---|---|---|
+| `jsonMergePatch` | `<T>(target: unknown, patch: unknown) => T` | Applies an RFC 7396 merge patch. |
+| `mergePatches` | `(basePatch, newPatch) => Record<string, unknown>` | Combines two merge patches, keeping `null` tombstones. |
+
+### Adapters and storage
+
+| Symbol | Signature | Purpose |
+|---|---|---|
+| `ResolvedLiveStoreConfig` | interface `{ adapter, sessionId, storageMode: 'persisted' \| 'single-tab' \| 'in-memory' }` | Result of adapter resolution. |
+| `resolveLiveStoreAdapter` | `(config: EngineConfig) => ResolvedLiveStoreConfig` | Picks persisted / single-tab / in-memory LiveStore adapter. |
+| `MemoryStorageAdapter` | `class implements StorageAdapter` | In-memory file storage (`mode: 'memory'`). |
+| `OpfsStorageAdapter` | `class implements StorageAdapter` | OPFS file storage with serialized, retried writes (`mode: 'opfs'`). |
+| `resolveStorageAdapter` | `(config: EngineConfig) => Promise<StorageAdapter>` | OPFS when available, else memory. |
+| `migrateLegacyV1` | `(config, store: { commit }, blobStore, storageOverride?) => Promise<boolean>` | Imports a v1 `<name>.db` JSON file once and renames it to `.migrated`. |
+
+### Blobs
+
+| Symbol | Signature | Purpose |
+|---|---|---|
+| `BlobStore` | interface `put(data) => Promise<string>`, `get(hash)`, `delete?(hash)`, `close?()` | Content-addressed binary store. |
+| `MemoryBlobStore` | `class implements BlobStore` | In-memory map. |
+| `OpfsBlobStore` | `class implements BlobStore` | OPFS directory `livestruct-blobs/<sha256>` with in-memory fallback. |
+| `resolveBlobStore` | `(forceMemory?: boolean) => BlobStore` | OPFS when available and not forced to memory. |
+| `serializeBlobs` | `(blobs?: BlobMap \| null) => Uint8Array \| null` | Legacy `LSB1` container format (used by v1 migration). |
+| `deserializeBlobs` | `(buffer?: Uint8Array \| null) => BlobMap` | Reads the `LSB1` container format. |
+
+---
+
+[<- Back to 04. Integration Guide](./topic--04-integration-guide.md) | [Back to Main README](../README.md)
 
 ---
 
@@ -385,6 +1692,8 @@ When a stage or session completes, agents MUST execute in this order:
 
 LiveStruct is an ergonomic, reactive document abstraction built on LiveStore 0.5.0 (SQLite WASM and event-sourcing). Heavy operations (file system I/O, SQLite transaction coordination, cross-tab synchronization) execute in background workers, while the UI thread maintains a lightweight client session with synchronous snapshots.
 
+Related pages: [Architecture & Wiring](./topic--03-architecture-and-wiring.md) (runtime topology, data-flow diagrams), [Domain Model](./topic--domain-model.md) (records, events, document states), [LiveStore Integration](./topic--livestore-integration.md) (spike evidence), [API Reference](./topic--05-api-reference.md).
+
 ## 1. System Topology
 
 ```text
@@ -427,6 +1736,7 @@ LiveStruct eliminates manual CQRS event boilerplate by providing a universal doc
 - `updatedAt INTEGER`: Deterministic millisecond timestamp.
 - `blobs TEXT`: Serialized JSON mapping of blob name to SHA-256 hash.
 - `mutationId TEXT`: Unique mutation tracking identifier for echo suppression.
+- `overlayId TEXT`: Overlay identifier of the last mutation, used by remote contexts to drop the matching tentative overlay.
 - `origin TEXT`: Marker indicating `local`, `remote`, or `migration`.
 
 Index: `idx_docs_collection_updatedAt` on `(collection, updatedAt)`.
@@ -452,14 +1762,14 @@ LiveStore event args must remain compact to prevent permanent eventlog bloat. Bi
 ## 4. Dual-Level API
 
 ### High-Level API (UI & Dynstruct Forms)
-- `LiveDocument<T>`: Implements `data` (frozen snapshot), `$` (RxJS observable), `patch(partial)`, `patchPath(path, value)`, and MobX atom notifications.
-- `LiveCollection<T>`: Manages document lifecycle (`get`, `create`, `delete`, `find`, `query$`).
+- `LiveDocument<T>`: Implements `data` (frozen snapshot), `$` (RxJS observable), `patch(partial)`, `patchUnchecked(patch)`, `patchPath(path, value)`, `replace(value)`, `flush()`, `isPending` / `isTentative`, `errors$` / `events$`, and MobX atom notifications (`toObservableDocument(doc)` adds a property-style Proxy).
+- `LiveCollection<T>`: Manages document lifecycle (`get`, `create`, `delete`, `find`, `query$`, `flush`).
 
 ### Low-Level Engine API (Worker Bridges & MsgMesh)
 - Accessible via `doc.engine` or `store.engine`.
-- `queryRaw(sql, params)`: Executes read-only SELECT queries directly against SQLite. Automatically rewrites queries targeting collection names to subqueries against the `docs` table. Non-SELECT queries are rejected.
+- `queryRaw(sql, params)`: Executes read-only `SELECT` (and `PRAGMA`) queries directly against SQLite. Automatically rewrites queries targeting collection names to subqueries against the `docs` table (exposing `id`, `collection`, `rev`, `data`, `doc_data`, `blobs`, `updated_at`). Any other statement is rejected.
 - `commitRaw(event)`: Dispatches raw commit events to engine mutations.
-- `cdc$`: Change Data Capture stream emitting typed events (`type`, `kind`, `collection`, `id`, `rev`, `delta`, `data`, `mutationId`, `origin`).
+- `cdc$`: Change Data Capture stream. `store.engine.cdc$` emits full `CDCEvent` objects (`type`, `kind`, `collection`, `id`, `rev`, `delta`, `data`, `timestamp`, `mutationId`, `overlayId`, `origin`); the collection-scoped `doc.engine.cdc$` emits `type`, `id`, `delta` and, when present, `mutationId` / `overlayId`.
 
 ## 5. Session Isolation & Embedding Defaults
 
@@ -523,10 +1833,181 @@ LiveStruct solves this transparently through an in-memory view layer, coalescing
 
 # Domain Model & Entity Ecosystem
 
-Core technical specification and documentation for livestruct.
+Core technical specification of the entities, records and event contracts that `@actdim/livestruct` manages. For usage see [Core Concepts](./topic--02-core-concepts.md); for the full symbol list see [API Reference](./topic--05-api-reference.md).
 
-## Overview
-Document system components and engineering guidelines here.
+## 1. Entity Overview
+
+```mermaid
+erDiagram
+    STORE ||--o{ COLLECTION : "collection(name)"
+    COLLECTION ||--o{ DOCUMENT : "get / create / find"
+    DOCUMENT ||--|| DOCS_ROW : "persisted as"
+    DOCS_ROW ||--o{ BLOB : "blobs name -> sha256"
+    DOCS_ROW ||--o{ LIVESTORE_EVENT : "materialized from"
+    DOCUMENT ||--o{ CDC_EVENT : "observes"
+    STORE ||--o{ LIVESTRUCT_EVENT : "events$"
+```
+
+| Entity | Type | Identity | Lifetime |
+|---|---|---|---|
+| Store | `LiveStoreInstance` | `LiveStructConfig.name` (LiveStore `storeId`) + `sessionId` | `createLiveStruct()` until `close()` |
+| Collection | `LiveCollection<T>` | collection name | cached per store until `dispose()` |
+| Document | `LiveDocument<T>` | `(collection, id)` | cached per collection until deleted or disposed |
+| Persisted row | `docs` table row / `DocumentRecord<T>` | `key = makeDocKey(collection, id)` | until `DocDeleted` |
+| Blob | `Uint8Array` / `Float32Array` in a `BlobStore` | SHA-256 hex of tag byte + bytes | content-addressed, shared by identical payloads |
+
+## 2. Persisted Record (`docs` table)
+
+All collections share one table defined in `src/engine/schema.ts`:
+
+| Column | Type | Meaning |
+|---|---|---|
+| `key` | TEXT, primary key | `` `${collection}\u0001${id}` `` |
+| `collection` | TEXT | Collection name. |
+| `id` | TEXT | Document id within the collection. |
+| `body` | TEXT, default `'{}'` | JSON document body. |
+| `rev` | INTEGER, default 1 | Revision; incremented by every replace, patch and path set. |
+| `updatedAt` | INTEGER | Millisecond timestamp carried by the event. |
+| `blobs` | TEXT, default `'{}'` | JSON map of blob name to SHA-256 hash. |
+| `mutationId` | TEXT | Id of the last mutation (echo suppression). |
+| `overlayId` | TEXT | Overlay id of the last mutation (tentative overlay matching). |
+| `origin` | TEXT | `local`, `remote` or `migration`. |
+
+Index: `idx_docs_collection_updatedAt (collection, updatedAt)`.
+
+The in-memory projection of a row is `DocumentRecord<T>`: `{ collection, id, rev, data, blobs, updatedAt }`, where `blobs` is a `BlobMap` of rehydrated typed arrays (filled by `getDoc`, empty for `queryDocs`).
+
+## 3. Events (Write Model)
+
+LiveStore synced events (namespace `livestruct.v1.`), all carrying `collection`, `id`, `mutationId`, `origin`, `updatedAt`:
+
+| Event | Extra fields | Materializer |
+|---|---|---|
+| `DocInserted` | `data`, `blobs?`, `overlayId?` | `INSERT ... rev = 1 ... ON CONFLICT (key) DO NOTHING` |
+| `DocReplaced` | `data`, `blobs?`, `overlayId?` | upsert; on conflict replace `body`, `rev = rev + 1` |
+| `DocPatched` | `patch`, `blobs?`, `overlayId?` | `body = json_patch(body, ?)`, `rev = rev + 1` |
+| `DocPathSet` | `path`, `value`, `overlayId?` | `body = json_set(body, ?, json(?))`, `rev = rev + 1` |
+| `DocDeleted` | - | `DELETE FROM docs WHERE key = ?` |
+
+`data`, `patch`, `value` and `blobs` are JSON strings; binary payloads never appear in events (only hashes).
+
+Application-level writes map to events as follows:
+
+| API | Event(s) |
+|---|---|
+| `collection.create`, `engine.insertDoc`, `commitRaw({ type: 'insert' })` | `DocInserted` |
+| `doc.replace`, `engine.updateDoc`, `commitRaw({ type: 'update' })` | `DocReplaced` |
+| `doc.patch` (via scheduler), `engine.patchDoc`, `commitRaw({ type: 'patch' })` | `DocPatched` |
+| `doc.patchPath` (via scheduler), `engine.setPathDoc` | `DocPathSet` |
+| `collection.delete`, `engine.deleteDoc`, `commitRaw({ type: 'delete' })` | `DocDeleted` |
+| legacy v1 migration | `DocInserted` with `origin: 'migration'` |
+
+## 4. Document State Model
+
+A `LiveDocument` combines three layers into the visible `data`:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Committed: loaded / created
+    Committed --> Pending: patch / patchPath
+    Pending --> Pending: more patches (coalesced)
+    Pending --> Committed: commit succeeded
+    Pending --> Committed: commit failed (rollback, errors$)
+    Committed --> Tentative: remote overlay received
+    Tentative --> Committed: matching commit / commit message / TTL expired
+    Tentative --> Pending: local patch (local edits win)
+    Committed --> [*]: deleted (local or remote) / dispose
+```
+
+| State | `isPending` | `isTentative` | `data` |
+|---|---|---|---|
+| Committed | `false` | `false` | committed body |
+| Pending | `true` | `false` | committed body + local pending patches |
+| Tentative | `false` | `true` | committed body + remote overlay patch |
+
+## 5. Change Data Capture Contract
+
+`CDCEvent<T>` (`src/engine/types.ts`):
+
+| Field | Meaning |
+|---|---|
+| `type` | `insert`, `update` or `delete`. |
+| `kind` | Adds `replace` for full-body replacement. |
+| `collection`, `id` | Target document. |
+| `rev` | Revision after the change. |
+| `delta` | Patch (local patch) or full body (inserts, replaces, remote updates). |
+| `data` | Full body after the change (absent for deletes). |
+| `timestamp` | Milliseconds. |
+| `mutationId`, `overlayId` | Correlation ids for echo suppression and overlay matching. |
+| `origin` | `local`, `remote` or `migration`. |
+
+`LiveEngineAccess<T>.cdc$` (the per-collection view used by `doc.engine`) carries `type`, `id`, `delta`, and `mutationId` / `overlayId` when present.
+
+## 6. Diagnostic Events
+
+`LiveStructEvent` (`src/document/types.ts`): `type` (`local_patch`, `overlay_sent`, `overlay_received`, `commit`, `remote_commit`), `collection`, `id`, `timestamp`, optional `rev`, `overlayId`, `senderSessionId`, `origin`, `patch`.
+
+## 7. Ephemeral Messages
+
+`OverlayChannel` messages on `BroadcastChannel` `livestruct:<storeId>:overlay`:
+
+- `OverlayMessage` - `{ type: 'overlay', collection, id, patch, overlayId, senderSessionId, timestamp }`.
+- `CommitMessage` - `{ type: 'commit', collection, id, overlayId, patch?, rev?, senderSessionId, timestamp }`.
+
+They are never persisted.
+
+## 8. Value Constraints
+
+Document bodies must be JSON-safe (`assertJsonSafe`): no `NaN` / `Infinity`, functions, symbols, bigints, `Date`, `Map`, `Set`, typed arrays, `ArrayBuffer`, class instances or circular references. Violations throw `LiveStructValueError` with the offending `path`.
+
+---
+
+## Document: docs/topic--license.md (License)
+
+# License
+
+`@actdim/livestruct` is distributed under the **MIT License** (`"license": "MIT"` in `package.json`).
+
+- Repository file: [LICENSE](https://github.com/actdim/livestruct/blob/main/LICENSE)
+- The `LICENSE` file is included in the published npm package (`package.json` `"files"`).
+
+## Summary of Terms
+
+- **Use, modification, distribution**: free for any purpose, including commercial use, modification, redistribution, sublicensing and sale.
+- **Condition**: the copyright notice and the permission notice must be included in all copies or substantial portions of the software.
+- **Warranty**: the software is provided "as is", without warranty of any kind.
+
+## Third-Party Peer Dependencies
+
+LiveStruct does not bundle its peers; applications install them and are bound by their own licenses: `@livestore/livestore`, `@livestore/adapter-web`, `effect`, `mobx`, `rxjs`, `@actdim/utico` and (optionally) `@actdim/msgmesh`. Check each package's license before redistribution.
+
+---
+
+## Full License Text
+
+```text
+MIT License
+
+Copyright (c) 2026 Pavel Borodaev
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
 
 ---
 
@@ -748,6 +2229,18 @@ The client bundle increase (+164 kB gzip) is attributable to the LiveStore clien
 
 ---
 
+## Implementation Notes (as shipped)
+
+The decisions above were recorded during the spike. The shipped engine (`src/engine/schema.ts`, `src/engine/liveStoreEngine.ts`) refines them as follows:
+
+- **Table shape**: the `docs` table uses a composite primary key `key = makeDocKey(collection, id)` (`` `${collection}\u0001${id}` ``) and camelCase columns: `collection`, `id`, `body`, `rev`, `updatedAt`, `blobs`, `mutationId`, `overlayId`, `origin`, plus the index `idx_docs_collection_updatedAt`. The snake_case `mutation_id` naming used in the spike notes (Q7 and Decision 1) is not what shipped.
+- **Events**: five synced events under the `livestruct.v1.` namespace - `DocInserted`, `DocReplaced`, `DocPatched` (`json_patch`), `DocPathSet` (`json_set`), `DocDeleted`.
+- **Session identity**: `sessionId` is optional in `LiveStructConfig`; when omitted, `resolveLiveStoreAdapter` generates one (`<name>-<random>-<time>`). Passing an explicit unique id per context is still recommended.
+- **Worker shipping**: both the shipped `@actdim/livestruct/worker` entry and an app-local worker that imports `schema` from `@actdim/livestruct/engine` (as `livestruct-demo` does) are supported.
+- **Lazy commits and overlays**: Decision 4 is implemented by `CommitScheduler` and `OverlayChannel`; see [Architecture & Engine Design](./topic--architecture.md), section 7, and [Architecture & Wiring](./topic--03-architecture-and-wiring.md).
+
+---
+
 ## Document: docs/topic--setup-and-workflow.md (Setup, Installation & Agent Workflows)
 
 # Setup, Installation & Agent Workflows
@@ -757,6 +2250,41 @@ Core technical specification and documentation for livestruct.
 ## Overview
 
 LiveStruct is an ergonomic, reactive document and record abstraction over LiveStore (reactive SQLite and event sourcing) for TypeScript applications.
+
+For consuming the package in an application, see the [Integration Guide](./topic--04-integration-guide.md). This page covers working on the package itself inside the monorepo (`src/packages/livestruct`).
+
+## Package Layout
+
+| Path | Contents |
+|---|---|
+| `src/index.ts` | Root entry: `createLiveStruct` and re-exports of engine, lens and document modules. |
+| `src/engine.ts`, `src/document.ts`, `src/lens.ts` | Subpath entries (`/engine`, `/document`, `/lens`). |
+| `src/worker.ts`, `src/shared-worker.ts` | Worker entries (`/worker`, `/shared-worker`). |
+| `src/engine/` | `LiveDocEngine`, built-in schema, adapter resolution, BlobStore, storage adapters, legacy v1 migration. |
+| `src/document/` | `LiveDocumentImpl`, `LiveCollectionImpl`, `CommitScheduler`, `OverlayChannel`, helpers. |
+| `src/lens/` | `NestedPath` / `PathValue` types and immutable path helpers. |
+| `tests/*.test.ts` | Vitest node suites (document, collection, engine, engine correctness, lazy commit, lens, LiveStore engine). |
+| `tests/types/` | Type-level tests (`*.test-d.ts`). |
+| `tests/browser/` | Playwright specs run against `livestruct-demo`. |
+| `spikes/` | LiveStore integration spikes (also picked up by the node Vitest config). |
+| `docs/` | Knowledge Base (this folder). |
+
+## Scripts
+
+All scripts are defined in `package.json` and run from `src/packages/livestruct` (or with `pnpm --filter @actdim/livestruct <script>` from the workspace root):
+
+| Script | Command | Purpose |
+|---|---|---|
+| `pnpm test` | `vitest --config=vitest.node.config.ts --no-cache` | Node unit and correctness suites (in-memory LiveStore). |
+| `pnpm test:w` | `vitest --config=vitest.node.config.ts --watch` | Same, in watch mode. |
+| `pnpm test:browser` | `playwright test` | Chromium suite against the `livestruct-demo` preview server. |
+| `pnpm build` | `tsc -b tsconfig.json && vite build` | Type-check, then build ES modules and `.d.ts` files into `dist/` (one output file per source file, `preserveModules`). |
+| `pnpm typecheck` | `tsc -b tsconfig.json` | Type-check only. |
+| `pnpm lint` | `eslint src` | Lint sources. |
+| `pnpm format` / `pnpm format:check` | `prettier --write .` / `prettier --check .` | Formatting. |
+| `pnpm docs:dev` / `docs:build` / `docs:preview` | `vitepress dev docs` / `vitepress build docs` / `vitepress preview docs` | Documentation site (published at https://actdim.github.io/livestruct/). |
+
+Peer dependencies are externalized by the build (`packageConfig.ts` `externals`), so `dist/` contains no LiveStore, Effect, MobX or RxJS code.
 
 ## Development and Testing
 
@@ -771,6 +2299,8 @@ pnpm test
 # Run tests in watch mode
 pnpm test:w
 ```
+
+`vitest.node.config.ts` aliases `@livestore/wa-sqlite/dist/wa-sqlite.mjs` to the Node build `wa-sqlite.node.mjs`; without it LiveStore tries to load the browser WASM loader in Node. Tests run in the `forks` pool with `isolate: false` and include both `tests/**` and `spikes/**` (browser specs under `tests/browser/**` are excluded). `tests/helpers.ts` provides `nextEmission(obs$, predicate, timeoutMs)` for awaiting stream emissions without fixed sleeps.
 
 ### Browser Tests
 
@@ -790,6 +2320,8 @@ pnpm exec playwright install chromium
 # Run Playwright browser suite
 pnpm test:browser
 ```
+
+`playwright.config.ts` starts `pnpm --filter @actdim/livestruct-demo preview --port 4173 --strictPort` as its web server (reused locally when already running), so build `livestruct-demo` first. Tests run serially (`workers: 1`) in Desktop Chrome at 1440x900.
 
 The browser integration test suite covers:
 - `boot.spec.ts`: Verifies store initialization with `storageMode === 'persisted'` and zero console/runtime errors.

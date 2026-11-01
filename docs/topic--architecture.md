@@ -13,6 +13,8 @@ tags: [architecture, livestore, opfs, worker, schema, blobs]
 
 LiveStruct is an ergonomic, reactive document abstraction built on LiveStore 0.5.0 (SQLite WASM and event-sourcing). Heavy operations (file system I/O, SQLite transaction coordination, cross-tab synchronization) execute in background workers, while the UI thread maintains a lightweight client session with synchronous snapshots.
 
+Related pages: [Architecture & Wiring](./topic--03-architecture-and-wiring.md) (runtime topology, data-flow diagrams), [Domain Model](./topic--domain-model.md) (records, events, document states), [LiveStore Integration](./topic--livestore-integration.md) (spike evidence), [API Reference](./topic--05-api-reference.md).
+
 ## 1. System Topology
 
 ```text
@@ -55,6 +57,7 @@ LiveStruct eliminates manual CQRS event boilerplate by providing a universal doc
 - `updatedAt INTEGER`: Deterministic millisecond timestamp.
 - `blobs TEXT`: Serialized JSON mapping of blob name to SHA-256 hash.
 - `mutationId TEXT`: Unique mutation tracking identifier for echo suppression.
+- `overlayId TEXT`: Overlay identifier of the last mutation, used by remote contexts to drop the matching tentative overlay.
 - `origin TEXT`: Marker indicating `local`, `remote`, or `migration`.
 
 Index: `idx_docs_collection_updatedAt` on `(collection, updatedAt)`.
@@ -80,14 +83,14 @@ LiveStore event args must remain compact to prevent permanent eventlog bloat. Bi
 ## 4. Dual-Level API
 
 ### High-Level API (UI & Dynstruct Forms)
-- `LiveDocument<T>`: Implements `data` (frozen snapshot), `$` (RxJS observable), `patch(partial)`, `patchPath(path, value)`, and MobX atom notifications.
-- `LiveCollection<T>`: Manages document lifecycle (`get`, `create`, `delete`, `find`, `query$`).
+- `LiveDocument<T>`: Implements `data` (frozen snapshot), `$` (RxJS observable), `patch(partial)`, `patchUnchecked(patch)`, `patchPath(path, value)`, `replace(value)`, `flush()`, `isPending` / `isTentative`, `errors$` / `events$`, and MobX atom notifications (`toObservableDocument(doc)` adds a property-style Proxy).
+- `LiveCollection<T>`: Manages document lifecycle (`get`, `create`, `delete`, `find`, `query$`, `flush`).
 
 ### Low-Level Engine API (Worker Bridges & MsgMesh)
 - Accessible via `doc.engine` or `store.engine`.
-- `queryRaw(sql, params)`: Executes read-only SELECT queries directly against SQLite. Automatically rewrites queries targeting collection names to subqueries against the `docs` table. Non-SELECT queries are rejected.
+- `queryRaw(sql, params)`: Executes read-only `SELECT` (and `PRAGMA`) queries directly against SQLite. Automatically rewrites queries targeting collection names to subqueries against the `docs` table (exposing `id`, `collection`, `rev`, `data`, `doc_data`, `blobs`, `updated_at`). Any other statement is rejected.
 - `commitRaw(event)`: Dispatches raw commit events to engine mutations.
-- `cdc$`: Change Data Capture stream emitting typed events (`type`, `kind`, `collection`, `id`, `rev`, `delta`, `data`, `mutationId`, `origin`).
+- `cdc$`: Change Data Capture stream. `store.engine.cdc$` emits full `CDCEvent` objects (`type`, `kind`, `collection`, `id`, `rev`, `delta`, `data`, `timestamp`, `mutationId`, `overlayId`, `origin`); the collection-scoped `doc.engine.cdc$` emits `type`, `id`, `delta` and, when present, `mutationId` / `overlayId`.
 
 ## 5. Session Isolation & Embedding Defaults
 

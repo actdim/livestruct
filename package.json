@@ -12,7 +12,7 @@
     "bugs": {
         "url": "https://github.com/actdim/livestruct/issues"
     },
-    "homepage": "https://github.com/actdim/livestruct/#readme",
+    "homepage": "https://actdim.github.io/livestruct/",
     "keywords": [
         "typescript",
         "livestore",
@@ -31,9 +31,22 @@
     ],
     "files": [
         "dist",
+        "docs",
+        "!docs/.vitepress",
         "README.md",
-        "LICENSE"
+        "LICENSE",
+        "AGENTS.md",
+        "CLAUDE.md",
+        "llms.txt",
+        "llms-full.txt"
     ],
+    "ai": {
+        "instructions": "./AGENTS.md",
+        "docs": "./docs",
+        "llms": "./llms.txt",
+        "llms-full": "./llms-full.txt"
+    },
+    "llms": "./llms.txt",
     "exports": {
         ".": {
             "types": "./dist/index.d.ts",
@@ -83,7 +96,10 @@
         "typecheck": "tsc -b tsconfig.json",
         "lint": "npx eslint src",
         "format": "prettier --write .",
-        "format:check": "prettier --check ."
+        "format:check": "prettier --check .",
+        "docs:dev": "vitepress dev docs",
+        "docs:build": "vitepress build docs",
+        "docs:preview": "vitepress preview docs"
     },
     "peerDependencies": {
         "@actdim/msgmesh": ">=1.12.0",
@@ -117,6 +133,9 @@
         "@livestore/wa-sqlite": "catalog:",
         "effect": "catalog:",
         "@opentelemetry/api": "catalog:",
-        "@standard-schema/spec": "catalog:"
+        "@standard-schema/spec": "catalog:",
+        "mermaid": "^11.4.1",
+        "vitepress": "^1.6.4",
+        "vitepress-plugin-mermaid": "^2.0.17"
     }
 }
