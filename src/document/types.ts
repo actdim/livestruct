@@ -28,6 +28,31 @@ export type PatchPayload<T> = Partial<T> | Record<string, unknown>;
 export type CommitPolicy = 'lazy' | 'immediate';
 
 /**
+ * Diagnostic and reactive event types emitted across the LiveStruct engine.
+ */
+export type LiveStructEventType =
+    | 'local_patch'
+    | 'overlay_sent'
+    | 'overlay_received'
+    | 'commit'
+    | 'remote_commit';
+
+/**
+ * Structured diagnostic event emitted by LiveStruct.
+ */
+export interface LiveStructEvent {
+    readonly type: LiveStructEventType;
+    readonly collection: string;
+    readonly id: string;
+    readonly timestamp: number;
+    readonly rev?: number;
+    readonly overlayId?: string;
+    readonly senderSessionId?: string;
+    readonly origin?: string;
+    readonly patch?: Record<string, unknown>;
+}
+
+/**
  * Document and collection-level options for commit scheduling.
  */
 export interface LiveDocumentOptions {
@@ -57,6 +82,11 @@ export interface LiveDocument<T extends object = Record<string, any>> extends Di
      * Observable stream emitting deferred commit errors.
      */
     readonly errors$: Observable<Error>;
+
+    /**
+     * Observable stream of diagnostic lifecycle events for this document.
+     */
+    readonly events$: Observable<LiveStructEvent>;
 
     /**
      * True when there are local uncommitted pending patches.
@@ -153,6 +183,7 @@ export interface LiveStructConfig {
 export interface LiveStoreInstance {
     readonly engine: LiveSqliteEngine;
     readonly errors$: Observable<Error>;
+    readonly events$: Observable<LiveStructEvent>;
     collection<T extends object = Record<string, any>>(
         name: string,
         options?: LiveDocumentOptions

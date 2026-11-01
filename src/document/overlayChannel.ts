@@ -6,6 +6,7 @@
 
 import { jsonMergePatch } from '../engine/patch';
 import { makeDocKey } from '../engine/schema';
+import type { LiveStructEvent } from './types';
 
 export interface OverlayMessage {
     readonly type: 'overlay';
@@ -17,9 +18,27 @@ export interface OverlayMessage {
     readonly timestamp: number;
 }
 
+export interface CommitMessage {
+    readonly type: 'commit';
+    readonly collection: string;
+    readonly id: string;
+    readonly overlayId: string;
+    readonly patch?: Record<string, unknown>;
+    readonly rev?: number;
+    readonly senderSessionId: string;
+    readonly timestamp: number;
+}
+
+export type OverlayChannelMessage = OverlayMessage | CommitMessage;
+
 export interface OverlayDocumentTarget {
     applyRemoteOverlay(patch: Record<string, unknown>, overlayId: string): void;
     clearRemoteOverlay(overlayId: string): void;
+    applyRemoteCommit?(
+        patch: Record<string, unknown> | undefined,
+        rev: number | undefined,
+        overlayId: string
+    ): void;
 }
 
 export interface OverlayChannelOptions {
@@ -27,6 +46,7 @@ export interface OverlayChannelOptions {
     sessionId?: string;
     overlayTtlMs?: number; // default: 1500
     disabled?: boolean;
+    onEvent?: (event: LiveStructEvent) => void;
 }
 
 interface ReceivedOverlayEntry {
@@ -49,6 +69,7 @@ export class OverlayChannel {
     readonly sessionId: string;
     readonly overlayTtlMs: number;
     private readonly disabled: boolean;
+    private readonly onEvent?: (event: LiveStructEvent) => void;
 
     private channel: BroadcastChannel | null = null;
     private readonly registeredDocs = new Map<string, OverlayDocumentTarget>();
@@ -64,6 +85,7 @@ export class OverlayChannel {
         this.sessionId = options.sessionId || `sess_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
         this.overlayTtlMs = options.overlayTtlMs ?? 1500;
         this.disabled = options.disabled ?? false;
+        this.onEvent = options.onEvent;
 
         if (!this.disabled && typeof BroadcastChannel !== 'undefined') {
             try {
@@ -168,6 +190,14 @@ export class OverlayChannel {
             };
             try {
                 this.channel.postMessage(message);
+                this.onEvent?.({
+                    type: 'overlay_sent',
+                    collection: entry.collection,
+                    id: entry.id,
+                    overlayId: entry.overlayId,
+                    patch: entry.patch,
+                    timestamp: now,
+                });
             } catch {
                 // Ignore serialization or transmission errors
             }
@@ -175,18 +205,83 @@ export class OverlayChannel {
         this.outgoingPending.clear();
     }
 
+    /**
+     * Broadcasts a committed patch to same-origin contexts so tentative overlays are dropped
+     * and final committed values are restored synchronously across tabs/iframes.
+     */
+    broadcastCommit(
+        collection: string,
+        id: string,
+        overlayId: string,
+        patch?: Record<string, unknown>,
+        rev?: number
+    ): void {
+        if (this.disabled || this.isDisposed || !this.channel) {
+            return;
+        }
+
+        const docKey = makeDocKey(collection, id);
+        this.outgoingPending.delete(docKey);
+
+        const now = Date.now();
+        const message: CommitMessage = {
+            type: 'commit',
+            collection,
+            id,
+            overlayId,
+            patch,
+            rev,
+            senderSessionId: this.sessionId,
+            timestamp: now,
+        };
+
+        try {
+            this.channel.postMessage(message);
+        } catch {
+            // Ignore serialization or transmission errors
+        }
+    }
+
     private handleIncomingMessage(rawMessage: unknown): void {
         if (this.isDisposed || !rawMessage || typeof rawMessage !== 'object') {
             return;
         }
 
-        const message = rawMessage as OverlayMessage;
-        if (message.type !== 'overlay') {
-            return;
-        }
+        const message = rawMessage as OverlayChannelMessage;
 
         // Ignore messages originating from self
         if (message.senderSessionId === this.sessionId) {
+            return;
+        }
+
+        if (message.type === 'commit') {
+            const key = makeDocKey(message.collection, message.id);
+            this.receivedOverlays.delete(key);
+
+            const target = this.registeredDocs.get(key);
+            if (target) {
+                if (typeof target.applyRemoteCommit === 'function') {
+                    target.applyRemoteCommit(message.patch, message.rev, message.overlayId);
+                } else {
+                    target.clearRemoteOverlay(message.overlayId);
+                }
+            }
+
+            this.onEvent?.({
+                type: 'remote_commit',
+                collection: message.collection,
+                id: message.id,
+                rev: message.rev ?? 1,
+                overlayId: message.overlayId,
+                origin: 'remote',
+                patch: message.patch ?? {},
+                timestamp: message.timestamp || Date.now(),
+            });
+
+            return;
+        }
+
+        if (message.type !== 'overlay') {
             return;
         }
 
@@ -212,6 +307,16 @@ export class OverlayChannel {
         if (target) {
             target.applyRemoteOverlay(mergedPatch, message.overlayId);
         }
+
+        this.onEvent?.({
+            type: 'overlay_received',
+            collection: message.collection,
+            id: message.id,
+            overlayId: message.overlayId,
+            patch: message.patch,
+            senderSessionId: message.senderSessionId,
+            timestamp: message.timestamp || Date.now(),
+        });
 
         this.ensureTtlSweep();
     }

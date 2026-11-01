@@ -5,14 +5,14 @@
  * remote change rebasing, and low-level engine escape hatch.
  */
 
-import { BehaviorSubject, Subject, Observable, Subscription } from 'rxjs';
+import { BehaviorSubject, Subject, Observable, Subscription, EMPTY } from 'rxjs';
 import { filter } from 'rxjs/operators';
 import { createAtom, type IAtom } from 'mobx';
 import type { LiveEngineAccess, LiveSqliteEngine } from '../engine/index';
 import type { CDCEvent } from '../engine/types';
 import { jsonMergePatch, mergePatches } from '../engine/patch';
 import type { NestedPath, PathValue } from '../lens/index';
-import type { LiveDocument, LiveDocumentOptions, PatchPayload } from './types';
+import type { LiveDocument, LiveDocumentOptions, LiveStructEvent, PatchPayload } from './types';
 import { buildPathPatch } from './patchHelper';
 import { deepEquals } from './equal';
 import { CommitScheduler, type CommitSchedulerDocumentTarget } from './commitScheduler';
@@ -29,6 +29,8 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
     private readonly commitScheduler: CommitScheduler;
     private readonly overlayChannel?: OverlayChannel;
     private readonly options?: LiveDocumentOptions;
+    private readonly onEvent?: (event: LiveStructEvent) => void;
+    private readonly allEvents$?: Observable<LiveStructEvent>;
 
     private committedData: Readonly<T>;
     private committedRev: number;
@@ -54,7 +56,9 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
         engineAccess: LiveEngineAccess<T>,
         commitScheduler?: CommitScheduler,
         overlayChannel?: OverlayChannel,
-        options?: LiveDocumentOptions
+        options?: LiveDocumentOptions,
+        onEvent?: (event: LiveStructEvent) => void,
+        allEvents$?: Observable<LiveStructEvent>
     ) {
         this.collectionName = collectionName;
         this.id = id;
@@ -63,6 +67,8 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
         this.committedRev = initialRev;
         this.currentRev = initialRev;
         this.options = options;
+        this.onEvent = onEvent;
+        this.allEvents$ = allEvents$;
 
         this.commitScheduler = commitScheduler ?? new CommitScheduler(rawEngine as any);
         this.overlayChannel = overlayChannel;
@@ -107,12 +113,10 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
 
         if (event.type === 'update' || event.type === 'insert') {
             // Drop matching tentative overlay if commit arrived
-            if (event.overlayId) {
-                this.overlayChannel?.dropOverlay(this.collectionName, this.id, event.overlayId);
-                if (this.remoteOverlayId === event.overlayId) {
-                    this.remoteTentativePatch = null;
-                    this.remoteOverlayId = null;
-                }
+            this.overlayChannel?.dropOverlay(this.collectionName, this.id, event.overlayId);
+            if (!event.overlayId || this.remoteOverlayId === event.overlayId) {
+                this.remoteTentativePatch = null;
+                this.remoteOverlayId = null;
             }
 
             const delta = (event.delta || event.data) as Partial<T>;
@@ -165,6 +169,15 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
 
     get errors$(): Observable<Error> {
         return this.errorSubject.asObservable();
+    }
+
+    get events$(): Observable<LiveStructEvent> {
+        if (!this.allEvents$) {
+            return EMPTY;
+        }
+        return this.allEvents$.pipe(
+            filter((e) => e.collection === this.collectionName && e.id === this.id)
+        );
     }
 
     get isDisposed(): boolean {
@@ -227,6 +240,14 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
             mutationId: overlayId,
             overlayId,
             origin: 'local',
+        });
+
+        this.onEvent?.({
+            type: 'local_patch',
+            collection: this.collectionName,
+            id: this.id,
+            patch: patchRecord,
+            timestamp: Date.now(),
         });
 
         // 5. Broadcast tentative overlay to other same-origin contexts (frame throttled)
@@ -323,6 +344,33 @@ export class LiveDocumentImpl<T extends object = Record<string, any>>
             this.remoteOverlayId = null;
             this.recomputeView(true);
         }
+    }
+
+    applyRemoteCommit(
+        patch: Record<string, unknown> | undefined,
+        rev: number | undefined,
+        _overlayId: string
+    ): void {
+        if (this.disposed) {
+            return;
+        }
+
+        this.remoteTentativePatch = null;
+        this.remoteOverlayId = null;
+
+        if (patch) {
+            this.committedData = Object.freeze(
+                jsonMergePatch<T>(this.committedData, patch as Partial<T>)
+            ) as unknown as T;
+        }
+
+        if (rev !== undefined && rev > this.committedRev) {
+            this.committedRev = rev;
+        } else {
+            this.committedRev++;
+        }
+
+        this.recomputeView(true);
     }
 
     dispose(): void {

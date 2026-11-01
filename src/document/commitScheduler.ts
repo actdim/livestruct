@@ -9,7 +9,8 @@ import type { LiveDocEngine } from '../engine/liveStoreEngine';
 import type { BlobMap } from '../engine/types';
 import { mergePatches } from '../engine/patch';
 import { makeDocKey } from '../engine/schema';
-import type { CommitPolicy, LiveDocumentOptions } from './types';
+import type { CommitPolicy, LiveDocumentOptions, LiveStructEvent } from './types';
+import type { OverlayChannel } from './overlayChannel';
 
 export interface CommitSchedulerDocumentTarget {
     onCommitSuccess(
@@ -44,6 +45,8 @@ export interface CommitSchedulerConfig {
     commitPolicy?: CommitPolicy;
     commitDelayMs?: number; // default: 150
     maxCommitWaitMs?: number; // default: 1000
+    overlayChannel?: OverlayChannel;
+    onEvent?: (event: LiveStructEvent) => void;
 }
 
 export class CommitScheduler {
@@ -56,6 +59,8 @@ export class CommitScheduler {
     private readonly registeredDocs = new Map<string, CommitSchedulerDocumentTarget>();
     private readonly errorSubject = new Subject<Error>();
     private readonly inFlightCommits = new Set<Promise<void>>();
+    private readonly overlayChannel?: OverlayChannel;
+    private readonly onEvent?: (event: LiveStructEvent) => void;
     private isDisposed = false;
 
     constructor(engine: LiveDocEngine, config?: CommitSchedulerConfig) {
@@ -63,6 +68,8 @@ export class CommitScheduler {
         this.defaultPolicy = config?.commitPolicy ?? 'lazy';
         this.defaultDelayMs = config?.commitDelayMs ?? 150;
         this.defaultMaxWaitMs = config?.maxCommitWaitMs ?? 1000;
+        this.overlayChannel = config?.overlayChannel;
+        this.onEvent = config?.onEvent;
     }
 
     get errors$(): Observable<Error> {
@@ -146,7 +153,7 @@ export class CommitScheduler {
         });
 
         if (policy === 'immediate') {
-            void this.commitBatch([docKey]);
+            void this.commitBatch([docKey], true);
         } else {
             // Trailing debounce timer
             if (entry.debounceTimer !== null) {
@@ -183,7 +190,7 @@ export class CommitScheduler {
         }
     }
 
-    async commitBatch(docKeys: string[]): Promise<void> {
+    async commitBatch(docKeys: string[], isFlush = false): Promise<void> {
         if (this.isDisposed || docKeys.length === 0) {
             return;
         }
@@ -221,6 +228,24 @@ export class CommitScheduler {
                     const target = this.registeredDocs.get(entry.docKey);
                     if (target && rec) {
                         target.onCommitSuccess(rec.rev, rec.data, entry.overlayId, entry.mergedPatch);
+                        if (isFlush) {
+                            this.overlayChannel?.broadcastCommit(
+                                entry.collection,
+                                entry.id,
+                                entry.overlayId,
+                                entry.mergedPatch,
+                                rec.rev
+                            );
+                        }
+                        this.onEvent?.({
+                            type: 'commit',
+                            collection: entry.collection,
+                            id: entry.id,
+                            rev: rec.rev,
+                            overlayId: entry.overlayId,
+                            patch: entry.mergedPatch,
+                            timestamp: Date.now(),
+                        });
                     }
                     for (const def of entry.deferredList) {
                         def.resolve();
@@ -254,7 +279,7 @@ export class CommitScheduler {
 
     async flushDoc(collection: string, id: string): Promise<void> {
         const docKey = makeDocKey(collection, id);
-        await this.commitBatch([docKey]);
+        await this.commitBatch([docKey], true);
         if (this.inFlightCommits.size > 0) {
             await Promise.all(Array.from(this.inFlightCommits));
         }
@@ -267,7 +292,7 @@ export class CommitScheduler {
                 matchingKeys.push(key);
             }
         }
-        await this.commitBatch(matchingKeys);
+        await this.commitBatch(matchingKeys, true);
         if (this.inFlightCommits.size > 0) {
             await Promise.all(Array.from(this.inFlightCommits));
         }
@@ -275,7 +300,7 @@ export class CommitScheduler {
 
     async flushAll(): Promise<void> {
         const allKeys = Array.from(this.pendingMap.keys());
-        await this.commitBatch(allKeys);
+        await this.commitBatch(allKeys, true);
         if (this.inFlightCommits.size > 0) {
             await Promise.all(Array.from(this.inFlightCommits));
         }
