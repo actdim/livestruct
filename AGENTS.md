@@ -1,5 +1,5 @@
 <!-- BEGIN ALONG-PROTOCOL root (managed by along-init - do not edit by hand) -->
-# ALONG-PROTOCOL v4.5.4
+# ALONG-PROTOCOL v4.6.0
 
 This repo carries its own agent context, provider-agnostically. Follow it every session, whatever tool you are. This is the core; procedures (completion checklist, doc routing, merges, along-team, tool-use rules) live in `docs/topic--along-protocol.md` - pull the section you need via `/along-kb-search`. A gate's error message carries its detail.
 
@@ -47,5 +47,6 @@ Runtime hooks enforce these where installed; elsewhere (`along doctor` shows the
 - **Package**: `@actdim/livestruct` - reactive document and record abstraction over LiveStore (reactive SQLite and event sourcing): `createLiveStruct` store, `LiveCollection` / `LiveDocument` with committed, pending and remote-overlay layers, `CommitScheduler`, `OverlayChannel`, typed lenses, and the `LiveDocEngine` / `LiveEngineAccess` engine with a CDC stream.
 - **Entry points**: `.` (`src/index.ts`), `./engine`, `./worker`, `./shared-worker` (plus `./lens`, `./document` via `./*`). ESM only. Peers pinned to the mempart catalog: `@livestore/livestore` / `@livestore/adapter-web` `0.5.0`, `effect` `4.0.3`; also `mobx`, `rxjs`, `@actdim/utico`, optional `@actdim/msgmesh`.
 - **Commands** (package folder): `pnpm run build`, `pnpm run typecheck`, `pnpm run test` (Vitest node), `pnpm run test:browser` (Playwright), `pnpm run docs:build` (VitePress, published to https://actdim.github.io/livestruct/ by `.github/workflows/pages.yml`).
+- **Demo**: `demo/` holds `@actdim/livestruct-demo` (Vite + React CAD showcase, also the Playwright harness) with its own `AGENTS.md` and `.along/`. `pnpm-workspace.yaml` (packages `.` and `demo`, catalog for livestore / effect) links this library to it as `workspace:*`; the demo is outside the library build, tests and npm tarball. The Pages workflow deploys it at https://actdim.github.io/livestruct/demo/.
 - **Knowledge Base**: `docs/INDEX.md`; regenerate `docs/INDEX.md`, `llms.txt` and `llms-full.txt` with `along kb-sync <absolute package path>` after doc changes.
 - **Versioning**: submodule of the mempart pnpm monorepo under one unified version; never bump `package.json` here in isolation (mempart `pnpm run version:sync <version>` only).

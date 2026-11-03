@@ -1,0 +1,11 @@
+node_modules
+dist
+.out
+*.tsbuildinfo
+.DS_Store
+.along/.session/
+
+
+.along/diagnostics/
+.along/artifacts/
+__pycache__/

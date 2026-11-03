@@ -1,0 +1,22 @@
+# Standalone workspace for this repo: the library (.) and its demo app (demo/).
+# The demo resolves @actdim/livestruct from this folder; the other @actdim packages come from npm.
+# Inside the mempart monorepo this file is ignored: mempart's src/pnpm-workspace.yaml is the root there.
+packages:
+  - .
+  - demo
+
+# Same versions as the mempart catalog.
+catalog:
+  '@livestore/livestore': 0.5.0
+  '@livestore/adapter-web': 0.5.0
+  '@livestore/wa-sqlite': 0.5.0
+  effect: 4.0.3
+  '@opentelemetry/api': 1.9.0
+  '@standard-schema/spec': 1.1.0
+
+overrides:
+  effect: 4.0.3
+  '@effect/platform-browser': 4.0.3
+
+onlyBuiltDependencies:
+  - esbuild

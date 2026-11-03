@@ -190,7 +190,7 @@ LiveStore and Effect are exact-version peers: `@livestore/livestore@0.5.0`, `@li
 ## 9. Documentation
 
 - Documentation site: https://actdim.github.io/livestruct/
-- Live demo: https://actdim.github.io/livestruct-demo/
+- Live demo: https://actdim.github.io/livestruct/demo/
 
 Knowledge Base topics:
 

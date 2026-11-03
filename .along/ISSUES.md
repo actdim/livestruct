@@ -1,7 +1,7 @@
 # Active Issues
 
 ## Active
-<!-- No active issues -->
+- [ ] `(task)` [host-demo](ISSUES/task--host-demo.md) - plan ready
 
 ## Backlog
 - [ ] `(bug)` [cdc-event-fields-dropped](ISSUES/bug--cdc-event-fields-dropped.md)

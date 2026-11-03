@@ -1,0 +1,31 @@
+{
+    "extends": "./tsconfig.base.json",
+    "compilerOptions": {
+        "composite": true,
+        "noEmit": true,
+        "declaration": true,
+        "emitDeclarationOnly": true,
+        "declarationMap": true,
+        "declarationDir": "./.out",
+        "outDir": "./.out",
+        "sourceMap": true,
+        "inlineSources": true,
+        "inlineSourceMap": false,
+        "types": ["node", "vitest/globals", "vite/client"],
+        "paths": {
+            "@/*": ["./src/*"]
+        }
+    },
+    "include": [
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "tests/**/*.ts",
+        "tests/**/*.tsx",
+        "packageConfig.ts",
+        "package.json",
+        "vite.config.ts",
+        "vitest.node.config.ts",
+        "vitest.setup.ts"
+    ],
+    "exclude": [".out", "dist", "node_modules"]
+}

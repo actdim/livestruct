@@ -32,6 +32,7 @@ For consuming the package in an application, see the [Integration Guide](./topic
 | `tests/*.test.ts` | Vitest node suites (document, collection, engine, engine correctness, lazy commit, lens, LiveStore engine). |
 | `tests/types/` | Type-level tests (`*.test-d.ts`). |
 | `tests/browser/` | Playwright specs run against `livestruct-demo`. |
+| `demo/` | `@actdim/livestruct-demo` app (Vite + React), a member of this repository's pnpm workspace (`pnpm-workspace.yaml`: `.` and `demo`); not part of the npm package. Deployed at https://actdim.github.io/livestruct/demo/. |
 | `spikes/` | LiveStore integration spikes (also picked up by the node Vitest config). |
 | `docs/` | Knowledge Base (this folder). |
 

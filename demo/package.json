@@ -1,0 +1,69 @@
+{
+    "name": "@actdim/livestruct-demo",
+    "version": "1.12.0",
+    "description": "Interactive showcase and laboratory for @actdim/livestruct, @actdim/msgmesh, and local-first SQLite OPFS documents.",
+    "author": "Pavel Borodaev",
+    "license": "MIT",
+    "type": "module",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/actdim/livestruct.git",
+        "directory": "demo"
+    },
+    "bugs": {
+        "url": "https://github.com/actdim/livestruct/issues"
+    },
+    "homepage": "https://actdim.github.io/livestruct/demo/",
+    "keywords": [
+        "typescript",
+        "react",
+        "livestruct",
+        "msgmesh",
+        "msgmesh-store",
+        "dynstruct",
+        "local-first",
+        "cad",
+        "canvas",
+        "demo",
+        "showcase"
+    ],
+    "files": [
+        "dist",
+        "README.md",
+        "LICENSE"
+    ],
+    "scripts": {
+        "dev": "vite",
+        "build": "tsc -b tsconfig.json && vite build",
+        "preview": "vite preview",
+        "test": "npx vitest --config=vitest.node.config.ts --no-cache",
+        "typecheck": "tsc -b tsconfig.json",
+        "format": "prettier --write .",
+        "format:check": "prettier --check ."
+    },
+    "dependencies": {
+        "@actdim/livestruct": "workspace:*",
+        "@actdim/msgmesh": ">=1.12.0",
+        "@actdim/utico": ">=1.12.0",
+        "mobx": "^6.13.6",
+        "mobx-react-lite": "^4.1.0",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+        "rxjs": "^7.8.2",
+        "@livestore/livestore": "catalog:",
+        "@livestore/adapter-web": "catalog:",
+        "@livestore/wa-sqlite": "catalog:",
+        "effect": "catalog:"
+    },
+    "devDependencies": {
+        "@types/node": "^24.10.0",
+        "@types/react": "^19.0.0",
+        "@types/react-dom": "^19.0.0",
+        "@vitejs/plugin-react": "^4.3.4",
+        "prettier": "^3.5.3",
+        "typescript": "^5.9.3",
+        "vite": "^6.2.1",
+        "vite-tsconfig-paths": "^5.1.4",
+        "vitest": "^3.0.9"
+    }
+}

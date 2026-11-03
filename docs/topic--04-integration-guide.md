@@ -14,7 +14,7 @@ tags: [04-integration-guide, setup, vite, worker, react, mobx, msgmesh, vitest]
 
 ---
 
-This guide wires `@actdim/livestruct` into a Vite + React application step by step. Every snippet follows the shipped API and the `livestruct-demo` application (`src/packages/livestruct-demo` in the monorepo; live at https://actdim.github.io/livestruct-demo/).
+This guide wires `@actdim/livestruct` into a Vite + React application step by step. Every snippet follows the shipped API and the `livestruct-demo` application (`demo/` of this repository, `src/packages/livestruct/demo` in the monorepo; live at https://actdim.github.io/livestruct/demo/).
 
 ---
 

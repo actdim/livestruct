@@ -1,0 +1,12 @@
+# @actdim/livestruct-demo
+
+> **Interactive Showcase & Laboratory for @actdim/livestruct, @actdim/msgmesh, and Local-First SQLite OPFS Living Documents**
+
+## Documentation Links
+- [README.md](README.md): Overview, quick installation, and full skill list.
+- [AGENTS.md](AGENTS.md): Active ALONG-PROTOCOL conventions and instructions.
+- [docs/INDEX.md](docs/INDEX.md): Central Knowledge Base topic catalog.
+- [docs/topic--along-protocol.md](docs/topic--along-protocol.md): Along Protocol Reference.
+- [docs/topic--architecture.md](docs/topic--architecture.md): System Architecture & Flow.
+- [docs/topic--domain-model.md](docs/topic--domain-model.md): Domain Model & Entity Ecosystem.
+- [docs/topic--setup-and-workflow.md](docs/topic--setup-and-workflow.md): Setup, Build & Workflow.
