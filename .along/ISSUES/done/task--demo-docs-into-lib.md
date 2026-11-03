@@ -3,7 +3,8 @@ protocol: along
 protocol_version: "4.6.0"
 slug: demo-docs-into-lib
 type: task
-status: in-progress
+status: done
+completed: 2026-11-03
 priority: medium
 created: 2026-11-03
 updated: 2026-11-03
