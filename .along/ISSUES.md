@@ -1,7 +1,7 @@
 # Active Issues
 
 ## Active
-- [ ] `(task)` [host-demo](ISSUES/task--host-demo.md) - plan ready
+<!-- No active issues -->
 
 ## Backlog
 - [ ] `(bug)` [cdc-event-fields-dropped](ISSUES/bug--cdc-event-fields-dropped.md)
@@ -10,9 +10,9 @@
 - [ ] `(docs)` [readme-claims-mismatch](ISSUES/docs--readme-claims-mismatch.md)
 
 ## Done (recent)
+- [x] `(task)` [host-demo](ISSUES/done/task--host-demo.md)
 - [x] `(spike)` [livestore-integration](ISSUES/done/spike--livestore-integration.md)
 - [x] `(feat)` [transparent-lazy-commit](ISSUES/done/feat--transparent-lazy-commit.md)
 - [x] `(feat)` [livestore-engine](ISSUES/done/feat--livestore-engine.md)
 - [x] `(docs)` [kb-parity-and-pages](ISSUES/done/docs--kb-parity-and-pages.md)
-- [x] `(debt)` [test-coverage-and-naming](ISSUES/done/debt--test-coverage-and-naming.md)
-<!-- 5 older completed issue(s) archived in .along/ISSUES/done/ -->
+<!-- 6 older completed issue(s) archived in .along/ISSUES/done/ -->
