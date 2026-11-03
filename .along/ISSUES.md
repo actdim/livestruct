@@ -1,7 +1,7 @@
 # Active Issues
 
 ## Active
-<!-- No active issues -->
+- [ ] `(task)` [demo-docs-into-lib](ISSUES/task--demo-docs-into-lib.md) - plan ready
 
 ## Backlog
 - [ ] `(bug)` [cdc-event-fields-dropped](ISSUES/bug--cdc-event-fields-dropped.md)
@@ -10,9 +10,9 @@
 - [ ] `(docs)` [readme-claims-mismatch](ISSUES/docs--readme-claims-mismatch.md)
 
 ## Done (recent)
+- [x] `(task)` [move-into-lib](ISSUES/done/task--move-into-lib.md)
 - [x] `(task)` [host-demo](ISSUES/done/task--host-demo.md)
+- [x] `(debt)` [unused-actdim-deps](ISSUES/done/debt--unused-actdim-deps.md)
+- [x] `(task)` [pages-deploy](ISSUES/done/task--pages-deploy.md)
 - [x] `(spike)` [livestore-integration](ISSUES/done/spike--livestore-integration.md)
-- [x] `(feat)` [transparent-lazy-commit](ISSUES/done/feat--transparent-lazy-commit.md)
-- [x] `(feat)` [livestore-engine](ISSUES/done/feat--livestore-engine.md)
-- [x] `(docs)` [kb-parity-and-pages](ISSUES/done/docs--kb-parity-and-pages.md)
-<!-- 6 older completed issue(s) archived in .along/ISSUES/done/ -->
+<!-- 15 older completed issue(s) archived in .along/ISSUES/done/ -->

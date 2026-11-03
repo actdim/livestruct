@@ -85,6 +85,15 @@ export default withMermaid(
             { text: 'Setup & Workflow', link: '/topic--setup-and-workflow' },
             { text: 'License', link: '/topic--license' }
           ]
+        },
+        {
+          text: 'Demo',
+          items: [
+            { text: 'Live Demo', link: 'https://actdim.github.io/livestruct/demo/' },
+            { text: 'Demo Architecture', link: '/topic--demo-architecture' },
+            { text: 'Demo Domain Model', link: '/topic--demo-domain-model' },
+            { text: 'Demo Setup & Workflow', link: '/topic--demo-setup-and-workflow' }
+          ]
         }
       ],
 

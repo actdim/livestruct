@@ -1,15 +1,17 @@
 ---
 protocol: along
 protocol_version: "4.5.4"
-slug: architecture
-title: System Architecture & Flow
-type: architecture
+slug: demo-architecture
+title: "Demo: System Architecture & Flow"
+type: topic
 created: 2026-11-01
-updated: 2026-11-01
+updated: 2026-11-03
 tags: [architecture, livestruct, msgmesh, opfs, worker, shared-worker, multi-tab, undo-redo]
 ---
 
 # @actdim/livestruct-demo Architecture
+
+> The demo app lives in [`demo/`](../demo/README.md) of this repository; file paths in this article are relative to `demo/`.
 
 ## 1. System Overview
 
@@ -144,6 +146,6 @@ flowchart TD
 
 ## 5. Cross-Links
 
-- [Domain Model](./topic--domain-model.md): shape and document model, channels, schemas, telemetry records.
-- [Setup & Workflow](./topic--setup-and-workflow.md): commands, tests, browser requirements, Pages CI.
-- [README](../README.md): scenarios and zone layout.
+- [Domain Model](./topic--demo-domain-model.md): shape and document model, channels, schemas, telemetry records.
+- [Setup & Workflow](./topic--demo-setup-and-workflow.md): commands, tests, browser requirements, Pages CI.
+- [README](../demo/README.md): scenarios and zone layout.

@@ -81,8 +81,7 @@ pnpm test
 
 ## 5. Documentation
 
-- [Knowledge Base Index](docs/INDEX.md)
-- [Architecture](docs/topic--architecture.md): zones, RAM streaming vs SQLite commits, worker topology, multi-tab sync, undo/redo, export/import.
-- [Domain Model](docs/topic--domain-model.md): CAD shapes and document, bus channels, LiveStore schema usage, telemetry records.
-- [Setup & Workflow](docs/topic--setup-and-workflow.md): running inside mempart, scripts, tests, browser requirements, GitHub Pages CI.
+- [Architecture](../docs/topic--demo-architecture.md): zones, RAM streaming vs SQLite commits, worker topology, multi-tab sync, undo/redo, export/import.
+- [Domain Model](../docs/topic--demo-domain-model.md): CAD shapes and document, bus channels, LiveStore schema usage, telemetry records.
+- [Setup & Workflow](../docs/topic--demo-setup-and-workflow.md): running inside mempart, scripts, tests, browser requirements, GitHub Pages CI.
 - Library documentation: [livestruct](https://actdim.github.io/livestruct/), [msgmesh-store](https://actdim.github.io/msgmesh-store/).

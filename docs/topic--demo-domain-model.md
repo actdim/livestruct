@@ -1,15 +1,17 @@
 ---
 protocol: along
 protocol_version: "4.5.4"
-slug: domain-model
-title: Domain Model & Entity Ecosystem
-type: domain-model
+slug: demo-domain-model
+title: "Demo: Domain Model & Entity Ecosystem"
+type: topic
 created: 2026-11-01
-updated: 2026-11-01
+updated: 2026-11-03
 tags: [domain-model, cad, shapes, livestore, schema, msgmesh, telemetry]
 ---
 
 # @actdim/livestruct-demo Domain Model
+
+> The demo app lives in [`demo/`](../demo/README.md) of this repository; file paths in this article are relative to `demo/`.
 
 ## 1. Entity Taxonomy
 
@@ -186,5 +188,5 @@ erDiagram
 
 ## 4. Cross-Links
 
-- [Architecture](./topic--architecture.md): data flow, worker topology, invariants.
-- [Setup & Workflow](./topic--setup-and-workflow.md): commands and tests that exercise these models.
+- [Architecture](./topic--demo-architecture.md): data flow, worker topology, invariants.
+- [Setup & Workflow](./topic--demo-setup-and-workflow.md): commands and tests that exercise these models.

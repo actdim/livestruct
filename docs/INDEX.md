@@ -31,6 +31,12 @@ flowchart TD
     INDEX --> T_ALONG_PROTOCOL
     T_ARCHITECTURE["LiveStruct Architecture & Engine Design"]
     INDEX --> T_ARCHITECTURE
+    T_DEMO_ARCHITECTURE["Demo: System Architecture & Flow"]
+    INDEX --> T_DEMO_ARCHITECTURE
+    T_DEMO_DOMAIN_MODEL["Demo: Domain Model & Entity Ecosystem"]
+    INDEX --> T_DEMO_DOMAIN_MODEL
+    T_DEMO_SETUP_AND_WORKFLOW["Demo: Setup, Build & Workflow"]
+    INDEX --> T_DEMO_SETUP_AND_WORKFLOW
     T_DOMAIN_MODEL["Domain Model & Entity Ecosystem"]
     INDEX --> T_DOMAIN_MODEL
     T_LICENSE["License"]
@@ -57,6 +63,12 @@ flowchart TD
     T_ARCHITECTURE -.->|references| T_DOMAIN_MODEL
     T_ARCHITECTURE -.->|references| T_LIVESTORE_INTEGRATION
     T_ARCHITECTURE -.->|references| T_05_API_REFERENCE
+    T_DEMO_ARCHITECTURE -.->|references| T_DEMO_DOMAIN_MODEL
+    T_DEMO_ARCHITECTURE -.->|references| T_DEMO_SETUP_AND_WORKFLOW
+    T_DEMO_DOMAIN_MODEL -.->|references| T_DEMO_ARCHITECTURE
+    T_DEMO_DOMAIN_MODEL -.->|references| T_DEMO_SETUP_AND_WORKFLOW
+    T_DEMO_SETUP_AND_WORKFLOW -.->|references| T_DEMO_ARCHITECTURE
+    T_DEMO_SETUP_AND_WORKFLOW -.->|references| T_DEMO_DOMAIN_MODEL
     T_DOMAIN_MODEL -.->|references| T_02_CORE_CONCEPTS
     T_DOMAIN_MODEL -.->|references| T_05_API_REFERENCE
     T_LIVESTORE_INTEGRATION -.->|references| T_ARCHITECTURE
@@ -75,6 +87,9 @@ flowchart TD
 - **[API Reference](./topic--05-api-reference.md)** (topic) `05-api-reference`, `api`, `contracts`, `exports`
 - **[Along Protocol Reference](./topic--along-protocol.md)** (reference) `protocol`, `agents-md`, `checklist`, `routing`, `concurrency`, `along-team`, `conventions`
 - **[LiveStruct Architecture & Engine Design](./topic--architecture.md)** (architecture) `architecture`, `livestore`, `opfs`, `worker`, `schema`, `blobs`
+- **[Demo: System Architecture & Flow](./topic--demo-architecture.md)** (topic) `architecture`, `livestruct`, `msgmesh`, `opfs`, `worker`, `shared-worker`, `multi-tab`, `undo-redo`
+- **[Demo: Domain Model & Entity Ecosystem](./topic--demo-domain-model.md)** (topic) `domain-model`, `cad`, `shapes`, `livestore`, `schema`, `msgmesh`, `telemetry`
+- **[Demo: Setup, Build & Workflow](./topic--demo-setup-and-workflow.md)** (topic) `setup`, `workflow`, `vite`, `vitest`, `opfs`, `github-pages`, `ci`, `monorepo`
 - **[Domain Model & Entity Ecosystem](./topic--domain-model.md)** (domain-model) `domain-model`, `entities`, `schemas`, `document`, `collection`, `cdc`, `events`
 - **[License](./topic--license.md)** (license) `license`, `mit`
 - **[LiveStore 0.5.0 Integration & Architectural Spike](./topic--livestore-integration.md)** (topic) `livestore-integration`

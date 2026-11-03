@@ -1,15 +1,17 @@
 ---
 protocol: along
 protocol_version: "4.5.4"
-slug: setup-and-workflow
-title: Setup, Build & Workflow
-type: setup-workflow
+slug: demo-setup-and-workflow
+title: "Demo: Setup, Build & Workflow"
+type: topic
 created: 2026-11-01
 updated: 2026-11-03
 tags: [setup, workflow, vite, vitest, opfs, github-pages, ci, monorepo]
 ---
 
 # @actdim/livestruct-demo Setup, Build & Workflow
+
+> The demo app lives in [`demo/`](../demo/README.md) of this repository; file paths in this article are relative to `demo/`.
 
 ## 1. Prerequisites
 
@@ -47,8 +49,6 @@ Run from the package folder (or with `pnpm --filter @actdim/livestruct-demo <scr
 | `pnpm run typecheck` | `tsc -b tsconfig.json` | Type checks without bundling. |
 | `pnpm run format` | `prettier --write .` | Formats the package. |
 | `pnpm run format:check` | `prettier --check .` | Verifies formatting. |
-
-The Along test runner `.along/scripts/test.py` calls `pnpm test`.
 
 ## 4. Tests
 
@@ -92,17 +92,17 @@ $env:DEMO_BASE = '/livestruct/demo/'; pnpm --filter @actdim/livestruct-demo buil
 
 ## 6. Quality Gates
 
-1. `pnpm run typecheck` and `pnpm run test` pass (the Along test gate runs `pnpm test`).
+1. `pnpm run typecheck` and `pnpm run test` pass.
 2. `pnpm run format:check` is clean.
 3. `pnpm run build` succeeds with and without `DEMO_BASE`; relative links (`?viewport=A`) keep working under `/livestruct/demo/`.
 4. A manual check in a browser with OPFS: drag a shape in `/?split=dual`, confirm the peer shows the tentative ghost and then the committed position, and that the monitor shows one `sqlite.commit` per drag.
-5. Commit-time `along lint`: ASCII text, fenced code with languages, relative links.
+5. Docs stay ASCII, with fenced code languages and relative links (checked at commit time in the livestruct repository).
 6. Versioning: the package version follows the mempart monorepo. Change it only with `pnpm run version:sync <version>` from mempart `src/`, never by editing this `package.json` alone.
 
 ## 7. Cross-Links
 
-- [Architecture](./topic--architecture.md)
-- [Domain Model](./topic--domain-model.md)
-- [README](../README.md)
+- [Architecture](./topic--demo-architecture.md)
+- [Domain Model](./topic--demo-domain-model.md)
+- [README](../demo/README.md)
 - livestruct docs: [https://actdim.github.io/livestruct/](https://actdim.github.io/livestruct/)
 - msgmesh-store docs: [https://actdim.github.io/msgmesh-store/](https://actdim.github.io/msgmesh-store/)
