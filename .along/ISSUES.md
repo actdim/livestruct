@@ -1,7 +1,7 @@
 # Active Issues
 
 ## Active
-<!-- No active issues -->
+- [ ] `(task)` [pages-demo-deployment](ISSUES/task--pages-demo-deployment.md)
 
 ## Backlog
 - [ ] `(bug)` [cdc-event-fields-dropped](ISSUES/bug--cdc-event-fields-dropped.md)

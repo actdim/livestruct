@@ -43,9 +43,9 @@
         "format:check": "prettier --check ."
     },
     "dependencies": {
-        "@actdim/livestruct": ">=1.12.1",
-        "@actdim/msgmesh": ">=1.12.1",
-        "@actdim/utico": ">=1.12.1",
+        "@actdim/livestruct": "workspace:*",
+        "@actdim/msgmesh": ">=1.12.0",
+        "@actdim/utico": ">=1.12.0",
         "mobx": "^6.13.6",
         "mobx-react-lite": "^4.1.0",
         "react": "^19.0.0",

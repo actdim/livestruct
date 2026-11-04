@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'docs/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
       - 'README.md'
       - 'llms.txt'
       - 'llms-full.txt'
@@ -31,27 +33,19 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.30.3
+          node-version: 24
+          cache: pnpm
 
       - id: pages
         uses: actions/configure-pages@v5
 
-      # The package devDependencies include @actdim siblings that may not be on npm yet,
-      # so the docs build does not depend on the workspace install. The docs only need VitePress.
-      - name: Install docs toolchain
-        run: |
-          TOOLS="$RUNNER_TEMP/docs-tools"
-          mkdir -p "$TOOLS"
-          cd "$TOOLS"
-          npm init -y > /dev/null
-          npm install --no-audit --no-fund vitepress@^1.6.4 vitepress-plugin-mermaid@^2.0.17 mermaid@^11.4.1
-          ln -s "$TOOLS/node_modules" "$GITHUB_WORKSPACE/node_modules"
+      # Only the library: the demo needs sibling @actdim packages that may not be on npm yet.
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --config.auto-install-peers=false --filter @actdim/livestruct
 
       - name: Copy root files to public
         run: |
@@ -60,18 +54,16 @@ jobs:
           cp -f llms-full.txt docs/public/llms-full.txt 2>/dev/null || true
 
       - name: Build documentation
-        run: node_modules/.bin/vitepress build docs
+        run: pnpm run docs:build
 
       # The demo (demo/) links this library from the folder and takes the other @actdim packages
-      # from npm. Until they are published at the required version this step fails and the docs
-      # deploy without the demo.
+      # from npm.
       - name: Build demo
-        continue-on-error: true
         env:
           DEMO_BASE: ${{ steps.pages.outputs.base_path }}/demo/
+          DEMO_SITE: ${{ steps.pages.outputs.origin }}
         run: |
-          rm -f node_modules
-          pnpm install --no-frozen-lockfile
+          pnpm install --no-frozen-lockfile --config.auto-install-peers=true
           pnpm run build
           pnpm --filter @actdim/livestruct-demo build
           cp -r demo/dist .dist-docs/demo
