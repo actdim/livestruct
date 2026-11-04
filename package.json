@@ -88,6 +88,7 @@
         "access": "public"
     },
     "sideEffects": false,
+    "packageManager": "pnpm@10.21.0",
     "scripts": {
         "demo": "pnpm --dir demo dev",
         "test": "npx vitest --config=vitest.node.config.ts --no-cache",
