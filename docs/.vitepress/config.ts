@@ -50,7 +50,7 @@ export default withMermaid(
         { text: 'Core Concepts', link: '/topic--02-core-concepts' },
         { text: 'Integration', link: '/topic--04-integration-guide' },
         { text: 'API Reference', link: '/topic--05-api-reference' },
-        { text: 'Demo', link: 'https://actdim.github.io/livestruct/demo/' },
+        { text: 'Live Demo', link: 'https://actdim.github.io/livestruct/demo/' },
         { text: 'GitHub', link: GITHUB_REPO }
       ],
 

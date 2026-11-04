@@ -5,6 +5,11 @@
 [![npm version](https://img.shields.io/npm/v/@actdim/livestruct.svg)](https://www.npmjs.com/package/@actdim/livestruct)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9+-blue.svg)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Documentation](https://img.shields.io/badge/Docs-actdim.github.io%2Flivestruct-blue.svg)](https://actdim.github.io/livestruct/)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-actdim.github.io%2Flivestruct%2Fdemo-brightgreen.svg)](https://actdim.github.io/livestruct/demo/)
+
+- **Live Interactive Demo**: https://actdim.github.io/livestruct/demo/
+- **Documentation Site**: https://actdim.github.io/livestruct/
 
 ---
 

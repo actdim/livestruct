@@ -5,6 +5,10 @@
 [![Live demo](https://img.shields.io/badge/demo-live-brightgreen.svg)](https://actdim.github.io/livestruct/demo/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9+-blue.svg)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Documentation](https://img.shields.io/badge/Docs-actdim.github.io%2Flivestruct-blue.svg)](https://actdim.github.io/livestruct/)
+
+- **Live Demo Site**: https://actdim.github.io/livestruct/demo/
+- **LiveStruct Documentation**: https://actdim.github.io/livestruct/
 
 ---
 

@@ -12,6 +12,9 @@ tags: [01-overview-and-advantages, overview, livestore, local-first]
 
 [<- Back to README](../README.md) | [Next: 02. Core Concepts ->](./topic--02-core-concepts.md)
 
+> [!TIP]
+> **Live Interactive Demo:** Test live multi-tab synchronization, OPFS leader workers, and reactive document mutations in the browser at [https://actdim.github.io/livestruct/demo/](https://actdim.github.io/livestruct/demo/).
+
 ---
 
 ## What is @actdim/livestruct?
@@ -115,3 +118,6 @@ The `document` and `lens` paths resolve through the `./*` wildcard export. The f
 ---
 
 [<- Back to README](../README.md) | [Next: 02. Core Concepts ->](./topic--02-core-concepts.md)
+
+> [!TIP]
+> **Live Interactive Demo:** Test live multi-tab synchronization, OPFS leader workers, and reactive document mutations in the browser at [https://actdim.github.io/livestruct/demo/](https://actdim.github.io/livestruct/demo/).

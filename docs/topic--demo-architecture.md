@@ -15,11 +15,12 @@ tags: [architecture, livestruct, msgmesh, opfs, worker, shared-worker, multi-tab
 
 ## 1. System Overview
 
-`@actdim/livestruct-demo` is a Vite + React 19 single-page app that showcases `@actdim/livestruct` living documents on top of LiveStore (SQLite in OPFS, run in a dedicated worker plus a shared worker) and a typed `@actdim/msgmesh` bus. One CAD document (`doc-default` in collection `cad_documents`) is edited from a 2D canvas and a property inspector; a telemetry monitor shows which changes stay in RAM and which reach SQLite.
+`@actdim/livestruct-demo` is a Vite + React 19 single-page app deployed to GitHub Pages at [https://actdim.github.io/livestruct/demo/](https://actdim.github.io/livestruct/demo/). It showcases `@actdim/livestruct` living documents on top of LiveStore (SQLite in OPFS, run in a dedicated worker plus a shared worker) and a typed `@actdim/msgmesh` bus. One CAD document (`doc-default` in collection `cad_documents`) is edited from a 2D canvas and a property inspector; a telemetry monitor shows which changes stay in RAM and which reach SQLite.
 
 The libraries themselves are documented on their own sites; this topic only covers how the demo wires them:
 
-- livestruct: [https://actdim.github.io/livestruct/](https://actdim.github.io/livestruct/)
+- livestruct docs: [https://actdim.github.io/livestruct/](https://actdim.github.io/livestruct/)
+- livestruct live demo: [https://actdim.github.io/livestruct/demo/](https://actdim.github.io/livestruct/demo/)
 - msgmesh-store: [https://actdim.github.io/msgmesh-store/](https://actdim.github.io/msgmesh-store/)
 
 ```text
