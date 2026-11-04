@@ -64,7 +64,7 @@ export const App: React.FC = () => {
         };
     }, [viewportParam]);
 
-    // Keyboard shortcuts for child viewport mode
+    // Keyboard shortcuts & parent message listener for child viewport mode
     useEffect(() => {
         if (!viewportParam || !store) {
             return () => {};
@@ -75,18 +75,31 @@ export const App: React.FC = () => {
             if (!isCtrl) return;
 
             const key = e.key.toLowerCase();
-            if (key === 'z' && !e.shiftKey) {
+            const isKeyZ = e.code === 'KeyZ' || key === 'z' || key === 'я';
+            const isKeyY = e.code === 'KeyY' || key === 'y' || key === 'н';
+
+            if (isKeyZ && !e.shiftKey) {
                 e.preventDefault();
                 void store.undo();
-            } else if (key === 'y' || (key === 'z' && e.shiftKey)) {
+            } else if (isKeyY || (isKeyZ && e.shiftKey)) {
                 e.preventDefault();
                 void store.redo();
             }
         };
 
+        const handleMessage = (e: MessageEvent) => {
+            if (e.data?.type === 'cad-undo') {
+                void store.undo();
+            } else if (e.data?.type === 'cad-redo') {
+                void store.redo();
+            }
+        };
+
         window.addEventListener('keydown', handleKeyDown);
+        window.addEventListener('message', handleMessage);
         return () => {
             window.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('message', handleMessage);
         };
     }, [viewportParam, store]);
 

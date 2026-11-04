@@ -19,6 +19,7 @@ interface ActiveDragState {
     originShape: CadShape;
     currentDx: number;
     currentDy: number;
+    hasPushedUndo?: boolean;
 }
 
 export const VectorCanvas: React.FC<VectorCanvasProps> = ({
@@ -111,6 +112,14 @@ export const VectorCanvas: React.FC<VectorCanvasProps> = ({
         const hit = findTopmostHitShape(mouseX, mouseY, currentShapes);
 
         if (hit) {
+            if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
+                const searchParams = new URLSearchParams(window.location.search);
+                const viewport = searchParams.get('viewport');
+                if (viewport) {
+                    window.parent.postMessage({ type: 'cad-viewport-active', viewport }, '*');
+                }
+            }
+
             if (documentData.selectedShapeId !== hit.id) {
                 void store.selectShape(hit.id);
             }
@@ -121,6 +130,7 @@ export const VectorCanvas: React.FC<VectorCanvasProps> = ({
                 originShape: { ...hit },
                 currentDx: 0,
                 currentDy: 0,
+                hasPushedUndo: false,
             };
             drawCanvas();
         } else {
@@ -142,6 +152,12 @@ export const VectorCanvas: React.FC<VectorCanvasProps> = ({
         if (drag) {
             const dx = mouseX - drag.startX;
             const dy = mouseY - drag.startY;
+
+            if (!drag.hasPushedUndo && (dx !== 0 || dy !== 0)) {
+                store.pushUndoSnapshot();
+                drag.hasPushedUndo = true;
+            }
+
             drag.currentDx = dx;
             drag.currentDy = dy;
 

@@ -1,4 +1,5 @@
-import { defineConfig } from 'vite';
+import path from 'path';
+import { defineConfig, searchForWorkspaceRoot } from 'vite';
 import react from '@vitejs/plugin-react';
 import tsConfigPaths from 'vite-tsconfig-paths';
 import config from './packageConfig';
@@ -21,5 +22,11 @@ export default defineConfig({
     },
     server: {
         port: 4173,
+        fs: {
+            allow: [
+                searchForWorkspaceRoot(process.cwd()),
+                path.resolve(__dirname, '../../..'),
+            ],
+        },
     },
 });

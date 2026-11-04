@@ -127,7 +127,7 @@ export class CadStore {
         return this._redoStack.length > 0;
     }
 
-    private pushUndoSnapshot(): void {
+    public pushUndoSnapshot(): void {
         const snapshot = JSON.parse(JSON.stringify(this.doc.data)) as CadDocument;
         this._undoStack.push(snapshot);
         if (this._undoStack.length > 50) {

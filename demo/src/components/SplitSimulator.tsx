@@ -25,6 +25,17 @@ export const SplitSimulator: React.FC<SplitSimulatorProps> = ({
     const [isDraggingOver, setIsDraggingOver] = useState(false);
     const [statusMessage, setStatusMessage] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
+    const lastActiveViewportRef = useRef<'A' | 'B'>('A');
+
+    useEffect(() => {
+        const handleMessage = (e: MessageEvent) => {
+            if (e.data?.type === 'cad-viewport-active' && (e.data.viewport === 'A' || e.data.viewport === 'B')) {
+                lastActiveViewportRef.current = e.data.viewport;
+            }
+        };
+        window.addEventListener('message', handleMessage);
+        return () => window.removeEventListener('message', handleMessage);
+    }, []);
 
     const handleModeSwitch = useCallback(
         (newMode: ViewportMode) => {
@@ -44,20 +55,38 @@ export const SplitSimulator: React.FC<SplitSimulatorProps> = ({
 
     // REQ-4: Hotkey handling for Undo (Ctrl+Z) and Redo (Ctrl+Y / Ctrl+Shift+Z)
     const handleUndo = useCallback(async () => {
+        if (mode === 'dual') {
+            const iframeA = document.querySelector<HTMLIFrameElement>('[data-testid="iframe-viewport-a"]');
+            const iframeB = document.querySelector<HTMLIFrameElement>('[data-testid="iframe-viewport-b"]');
+            const target = lastActiveViewportRef.current === 'B' ? iframeB : iframeA;
+            target?.contentWindow?.postMessage({ type: 'cad-undo' }, '*');
+            setStatusMessage(`Undo sent to Viewport ${lastActiveViewportRef.current}`);
+            setTimeout(() => setStatusMessage(null), 1500);
+            return;
+        }
         const success = await cadStore.undo();
         if (success) {
             setStatusMessage('Undo executed');
             setTimeout(() => setStatusMessage(null), 1500);
         }
-    }, [cadStore]);
+    }, [cadStore, mode]);
 
     const handleRedo = useCallback(async () => {
+        if (mode === 'dual') {
+            const iframeA = document.querySelector<HTMLIFrameElement>('[data-testid="iframe-viewport-a"]');
+            const iframeB = document.querySelector<HTMLIFrameElement>('[data-testid="iframe-viewport-b"]');
+            const target = lastActiveViewportRef.current === 'B' ? iframeB : iframeA;
+            target?.contentWindow?.postMessage({ type: 'cad-redo' }, '*');
+            setStatusMessage(`Redo sent to Viewport ${lastActiveViewportRef.current}`);
+            setTimeout(() => setStatusMessage(null), 1500);
+            return;
+        }
         const success = await cadStore.redo();
         if (success) {
             setStatusMessage('Redo executed');
             setTimeout(() => setStatusMessage(null), 1500);
         }
-    }, [cadStore]);
+    }, [cadStore, mode]);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -65,10 +94,13 @@ export const SplitSimulator: React.FC<SplitSimulatorProps> = ({
             if (!isCtrl) return;
 
             const key = e.key.toLowerCase();
-            if (key === 'z' && !e.shiftKey) {
+            const isKeyZ = e.code === 'KeyZ' || key === 'z' || key === 'я';
+            const isKeyY = e.code === 'KeyY' || key === 'y' || key === 'н';
+
+            if (isKeyZ && !e.shiftKey) {
                 e.preventDefault();
                 void handleUndo();
-            } else if (key === 'y' || (key === 'z' && e.shiftKey)) {
+            } else if (isKeyY || (isKeyZ && e.shiftKey)) {
                 e.preventDefault();
                 void handleRedo();
             }
