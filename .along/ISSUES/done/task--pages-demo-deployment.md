@@ -3,7 +3,8 @@ protocol: along
 protocol_version: "4.6.0"
 slug: pages-demo-deployment
 type: task
-status: in-progress
+status: done
+completed: 2026-11-04
 priority: medium
 created: 2026-11-04
 updated: 2026-11-04
@@ -11,6 +12,7 @@ agent: antigravity
 tags: []
 blocked_by: []
 related: []
+plan_status: approved
 ---
 
 # Deploy docs and demo to GitHub Pages identically to dynstruct
@@ -25,6 +27,6 @@ with dynstruct so that both VitePress documentation and the interactive demo are
 - REQ-4: The demo MUST build with DEMO_BASE=/livestruct/demo/ and deploy to https://actdim.github.io/livestruct/demo/.
 
 ## Acceptance Criteria
-- [ ] GitHub Pages workflow runs and completes with green build and deploy jobs
-- [ ] Documentation site https://actdim.github.io/livestruct/ responds with 200 OK
-- [ ] Live demo https://actdim.github.io/livestruct/demo/ responds with 200 OK
+- [x] GitHub Pages workflow runs and completes with green build and deploy jobs
+- [x] Documentation site https://actdim.github.io/livestruct/ responds with 200 OK
+- [x] Live demo https://actdim.github.io/livestruct/demo/ responds with 200 OK
