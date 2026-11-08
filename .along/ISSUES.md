@@ -1,14 +1,13 @@
 # Active Issues
 
 ## Active
-<!-- No active issues -->
+- [ ] `(task)` [adopt-dev-config](ISSUES/task--adopt-dev-config.md)
 
 ## Backlog
 - [ ] `(bug)` [cdc-event-fields-dropped](ISSUES/bug--cdc-event-fields-dropped.md)
 - [ ] `(bug)` [missing-core-mesh-exports](ISSUES/bug--missing-core-mesh-exports.md)
 - [ ] `(debt)` [replace-commit-path-consistency](ISSUES/debt--replace-commit-path-consistency.md)
 - [ ] `(docs)` [readme-claims-mismatch](ISSUES/docs--readme-claims-mismatch.md)
-- [ ] `(task)` [adopt-dev-config](ISSUES/task--adopt-dev-config.md)
 
 ## Done (recent)
 - [x] `(task)` [pages-demo-deployment](ISSUES/done/task--pages-demo-deployment.md)
