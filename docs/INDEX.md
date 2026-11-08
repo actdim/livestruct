@@ -4,7 +4,7 @@ slug: INDEX
 title: '@actdim/livestruct - Knowledge Base Topic Index'
 type: index
 created: 2026-10-30
-updated: 2026-11-04
+updated: 2026-11-08
 tags: [index, kb, topics, map]
 ---
 
@@ -27,8 +27,6 @@ flowchart TD
     INDEX --> T_04_INTEGRATION_GUIDE
     T_05_API_REFERENCE["API Reference"]
     INDEX --> T_05_API_REFERENCE
-    T_ALONG_PROTOCOL["Along Protocol Reference"]
-    INDEX --> T_ALONG_PROTOCOL
     T_ARCHITECTURE["LiveStruct Architecture & Engine Design"]
     INDEX --> T_ARCHITECTURE
     T_DEMO_ARCHITECTURE["Demo: System Architecture & Flow"]
@@ -37,6 +35,8 @@ flowchart TD
     INDEX --> T_DEMO_DOMAIN_MODEL
     T_DEMO_SETUP_AND_WORKFLOW["Demo: Setup, Build & Workflow"]
     INDEX --> T_DEMO_SETUP_AND_WORKFLOW
+    T_DEPENDENCIES["Dependencies & AI Documentation for @actdim/livestruct"]
+    INDEX --> T_DEPENDENCIES
     T_DOMAIN_MODEL["Domain Model & Entity Ecosystem"]
     INDEX --> T_DOMAIN_MODEL
     T_LICENSE["License"]
@@ -85,11 +85,11 @@ flowchart TD
 - **[Architecture & Wiring](./topic--03-architecture-and-wiring.md)** (topic) `03-architecture-and-wiring`, `topology`, `worker`, `shared-worker`, `data-flow`
 - **[Integration Guide](./topic--04-integration-guide.md)** (topic) `04-integration-guide`, `setup`, `vite`, `worker`, `react`, `mobx`, `msgmesh`, `vitest`
 - **[API Reference](./topic--05-api-reference.md)** (topic) `05-api-reference`, `api`, `contracts`, `exports`
-- **[Along Protocol Reference](./topic--along-protocol.md)** (reference) `protocol`, `agents-md`, `checklist`, `routing`, `concurrency`, `along-team`, `conventions`
 - **[LiveStruct Architecture & Engine Design](./topic--architecture.md)** (architecture) `architecture`, `livestore`, `opfs`, `worker`, `schema`, `blobs`
 - **[Demo: System Architecture & Flow](./topic--demo-architecture.md)** (topic) `architecture`, `livestruct`, `msgmesh`, `opfs`, `worker`, `shared-worker`, `multi-tab`, `undo-redo`
 - **[Demo: Domain Model & Entity Ecosystem](./topic--demo-domain-model.md)** (topic) `domain-model`, `cad`, `shapes`, `livestore`, `schema`, `msgmesh`, `telemetry`
 - **[Demo: Setup, Build & Workflow](./topic--demo-setup-and-workflow.md)** (topic) `setup`, `workflow`, `vite`, `vitest`, `opfs`, `github-pages`, `ci`, `monorepo`
+- **[Dependencies & AI Documentation for @actdim/livestruct](./topic--dependencies.md)** (topic) `dependencies`, `subproject`, `ai-context`, `rules`
 - **[Domain Model & Entity Ecosystem](./topic--domain-model.md)** (domain-model) `domain-model`, `entities`, `schemas`, `document`, `collection`, `cdc`, `events`
 - **[License](./topic--license.md)** (license) `license`, `mit`
 - **[LiveStore 0.5.0 Integration & Architectural Spike](./topic--livestore-integration.md)** (topic) `livestore-integration`

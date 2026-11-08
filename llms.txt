@@ -11,11 +11,11 @@
 - [docs/topic--03-architecture-and-wiring.md](docs/topic--03-architecture-and-wiring.md): Architecture & Wiring.
 - [docs/topic--04-integration-guide.md](docs/topic--04-integration-guide.md): Integration Guide.
 - [docs/topic--05-api-reference.md](docs/topic--05-api-reference.md): API Reference.
-- [docs/topic--along-protocol.md](docs/topic--along-protocol.md): Along Protocol Reference.
 - [docs/topic--architecture.md](docs/topic--architecture.md): LiveStruct Architecture & Engine Design.
 - [docs/topic--demo-architecture.md](docs/topic--demo-architecture.md): Demo: System Architecture & Flow.
 - [docs/topic--demo-domain-model.md](docs/topic--demo-domain-model.md): Demo: Domain Model & Entity Ecosystem.
 - [docs/topic--demo-setup-and-workflow.md](docs/topic--demo-setup-and-workflow.md): Demo: Setup, Build & Workflow.
+- [docs/topic--dependencies.md](docs/topic--dependencies.md): Dependencies & AI Documentation for @actdim/livestruct.
 - [docs/topic--domain-model.md](docs/topic--domain-model.md): Domain Model & Entity Ecosystem.
 - [docs/topic--license.md](docs/topic--license.md): License.
 - [docs/topic--livestore-integration.md](docs/topic--livestore-integration.md): LiveStore 0.5.0 Integration & Architectural Spike.
