@@ -2,7 +2,7 @@
 
 All notable changes to `@actdim/livestruct` are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [1.14.0] - 2026-11-08
 
 ### Added
 - Browser integration test suite with Playwright Chromium (`test:browser`) covering OPFS boot, cross-context replication, ephemeral overlay streaming (`isTentative`), and reload persistence (`debt--test-coverage-and-naming`, REQ-2).
@@ -12,6 +12,8 @@ All notable changes to `@actdim/livestruct` are documented here. Format: [Keep a
 - Type assertion tests for `@deprecated` aliases in `tests/types/deprecated.test-d.ts` (`debt--test-coverage-and-naming`, REQ-3).
 
 ### Changed
+- Adopted `@actdim/dev-config` 1.12.2 presets for ESLint, Prettier, and tsconfig (`#adopt-dev-config`).
+- Synchronized workspace dependencies to `>=1.14.0`.
 - Preserved `LiveSqliteEngine` alias marked with `@deprecated use LiveDocEngine` in `src/engine/` and `src/index.ts` (`debt--test-coverage-and-naming`, REQ-3).
 - Strict recursive `PatchPayload<T>` type definition replacing loose partial schemas while handling arrays as whole units (`debt--test-coverage-and-naming`, REQ-4).
 - Zero `any` policy enforced across `src/` via ESLint `@typescript-eslint/no-explicit-any: error` (`debt--test-coverage-and-naming`, REQ-4).
