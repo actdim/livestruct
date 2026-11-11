@@ -2161,13 +2161,14 @@ $env:DEMO_BASE = '/livestruct/demo/'; pnpm --filter @actdim/livestruct-demo buil
 
 | Internal Package | Relative Path | AI Documentation & Context |
 | :--- | :--- | :--- |
-| **`@actdim/msgmesh`** | [`../../../../scratch/07-ci/ci-clone/src/packages/msgmesh`](../../../../scratch/07-ci/ci-clone/src/packages/msgmesh) | [AGENTS.md](../../../../scratch/07-ci/ci-clone/src/packages/msgmesh/AGENTS.md) <br> [CLAUDE.md](../../../../scratch/07-ci/ci-clone/src/packages/msgmesh/CLAUDE.md) <br> [llms-full.txt](../../../../scratch/07-ci/ci-clone/src/packages/msgmesh/llms-full.txt) <br> [llms.txt](../../../../scratch/07-ci/ci-clone/src/packages/msgmesh/llms.txt) <br> [.along/](../../../../scratch/07-ci/ci-clone/src/packages/msgmesh/.along) <br> [docs/](../../../../scratch/07-ci/ci-clone/src/packages/msgmesh/docs) |
-| **`@actdim/utico`** | [`../../../../scratch/07-ci/ci-clone/src/packages/utico`](../../../../scratch/07-ci/ci-clone/src/packages/utico) | [AGENTS.md](../../../../scratch/07-ci/ci-clone/src/packages/utico/AGENTS.md) <br> [CLAUDE.md](../../../../scratch/07-ci/ci-clone/src/packages/utico/CLAUDE.md) <br> [llms-full.txt](../../../../scratch/07-ci/ci-clone/src/packages/utico/llms-full.txt) <br> [llms.txt](../../../../scratch/07-ci/ci-clone/src/packages/utico/llms.txt) <br> [.along/](../../../../scratch/07-ci/ci-clone/src/packages/utico/.along) <br> [docs/](../../../../scratch/07-ci/ci-clone/src/packages/utico/docs) |
+| **`@actdim/msgmesh`** | [`../../msgmesh`](../../msgmesh) | [AGENTS.md](../../msgmesh/AGENTS.md) <br> [CLAUDE.md](../../msgmesh/CLAUDE.md) <br> [llms-full.txt](../../msgmesh/llms-full.txt) <br> [llms.txt](../../msgmesh/llms.txt) <br> [.along/](../../msgmesh/.along) <br> [docs/](../../msgmesh/docs) |
+| **`@actdim/utico`** | [`../../utico`](../../utico) | [AGENTS.md](../../utico/AGENTS.md) <br> [CLAUDE.md](../../utico/CLAUDE.md) <br> [llms-full.txt](../../utico/llms-full.txt) <br> [llms.txt](../../utico/llms.txt) <br> [.along/](../../utico/.along) <br> [docs/](../../utico/docs) |
 
 ## Declared External Dependencies with AI Guidelines
 
 | Package | Ecosystem | Version | AI Guidelines / Instructions |
 | :--- | :--- | :--- | :--- |
+| **`@actdim/dev-config`** | `npm` | `1.14.0` | [AGENTS.md](../../../app-core/packages/dev-config/AGENTS.md) <br> manifest metadata (`ai`) |
 | **`effect`** | `npm` | `4.0.3` | [AGENTS.md](../../../node_modules/.pnpm/effect@4.0.3/node_modules/effect/AGENTS.md) <br> [CLAUDE.md](../../../node_modules/.pnpm/effect@4.0.3/node_modules/effect/CLAUDE.md) |
 
 ## Transitive Dependency Guidelines & Invariants
