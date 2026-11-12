@@ -8,6 +8,7 @@
 - [ ] `(bug)` [missing-core-mesh-exports](ISSUES/bug--missing-core-mesh-exports.md)
 - [ ] `(debt)` [replace-commit-path-consistency](ISSUES/debt--replace-commit-path-consistency.md)
 - [ ] `(docs)` [readme-claims-mismatch](ISSUES/docs--readme-claims-mismatch.md)
+- [ ] `(task)` [docs-static-publish](ISSUES/task--docs-static-publish.md)
 
 ## Done (recent)
 - [x] `(task)` [adopt-dev-config](ISSUES/done/task--adopt-dev-config.md)
